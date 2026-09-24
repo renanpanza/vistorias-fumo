@@ -1,0 +1,786 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#2f6b3a">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>Vistorias Fumo</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<style>
+:root{
+  --bg:#f4f1ea; --card:#ffffff; --txt:#1e2420; --mut:#66706a; --line:#d9d4c7;
+  --pri:#2f6b3a; --pri-d:#245230; --acc:#b5651d; --ok:#2e7d32; --warn:#b26a00; --err:#b3261e;
+  --badge-rasc:#e6e2d6; --badge-pronta:#fff0d6; --badge-env:#dcefdd; --badge-erro:#fbe0de; --badge-enviando:#dde8fb;
+}
+@media (prefers-color-scheme: dark){
+  :root{ --bg:#15191a; --card:#1f2527; --txt:#e8e6df; --mut:#a6ada7; --line:#3a4245; --pri:#5fae6e; --pri-d:#3f8a4e;
+    --badge-rasc:#33393b; --badge-pronta:#4a3a1c; --badge-env:#1f3d24; --badge-erro:#4a2320; --badge-enviando:#22324a; }
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--txt);font:16px/1.4 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;-webkit-text-size-adjust:100%}
+button,input,select,textarea{font:inherit;color:inherit}
+h1,h2,h3{margin:0;font-weight:700}
+.tela{display:none;min-height:100vh;padding-bottom:110px}
+.tela.ativa{display:block}
+header.topo{position:sticky;top:0;z-index:20;background:var(--pri);color:#fff;padding:12px 14px;display:flex;align-items:center;gap:10px;box-shadow:0 2px 6px rgba(0,0,0,.2)}
+header.topo h1{font-size:18px;flex:1;line-height:1.2}
+header.topo small{display:block;font-weight:400;opacity:.85;font-size:12px}
+header.topo button{background:rgba(255,255,255,.15);border:0;color:#fff;border-radius:10px;padding:8px 12px;font-size:15px}
+main{padding:12px 12px 0;max-width:760px;margin:0 auto}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:12px 14px;margin-bottom:12px;box-shadow:0 1px 2px rgba(0,0,0,.04)}
+.card.lista{display:flex;gap:10px;align-items:center;cursor:pointer}
+.card.lista .info{flex:1;min-width:0}
+.card.lista .nome{font-weight:700;font-size:17px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.card.lista .meta{color:var(--mut);font-size:13px;margin-top:2px}
+.badge{display:inline-block;font-size:12px;font-weight:700;padding:3px 9px;border-radius:999px;white-space:nowrap}
+.st-rascunho{background:var(--badge-rasc)} .st-pronta{background:var(--badge-pronta);color:var(--warn)} .st-enviada{background:var(--badge-env);color:var(--ok)} .st-erro{background:var(--badge-erro);color:var(--err)} .st-enviando{background:var(--badge-enviando)}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;border:1px solid var(--line);background:var(--card);border-radius:12px;padding:12px 16px;font-weight:600;cursor:pointer;min-height:46px}
+.btn.pri{background:var(--pri);border-color:var(--pri);color:#fff}
+.btn.acc{background:var(--acc);border-color:var(--acc);color:#fff}
+.btn.perigo{color:var(--err);border-color:var(--err)}
+.btn.bloco{width:100%}
+.btn.peq{padding:8px 12px;min-height:38px;font-size:14px}
+.btn:disabled{opacity:.5}
+.secao{margin-bottom:12px;border:1px solid var(--line);border-radius:14px;background:var(--card);overflow:hidden}
+.secao>summary{list-style:none;cursor:pointer;padding:14px;font-weight:700;font-size:16px;display:flex;align-items:center;gap:10px;background:var(--card)}
+.secao>summary::-webkit-details-marker{display:none}
+.secao>summary .num{background:var(--pri);color:#fff;border-radius:8px;width:28px;height:28px;display:inline-flex;align-items:center;justify-content:center;font-size:14px;flex:none}
+.secao>summary .seta{margin-left:auto;color:var(--mut);transition:transform .2s}
+.secao[open]>summary .seta{transform:rotate(90deg)}
+.secao>.corpo{padding:4px 14px 14px;border-top:1px solid var(--line)}
+.dica{color:var(--mut);font-size:13px;margin:6px 0 10px}
+.aviso{background:#fff7e0;color:#6b4d00;border:1px solid #f1d78a;border-radius:10px;padding:10px 12px;font-size:14px;margin:8px 0}
+@media (prefers-color-scheme: dark){.aviso{background:#3d3115;color:#f2d98a;border-color:#6b5820}}
+.campo{margin:10px 0}
+.campo label{display:block;font-size:13px;font-weight:600;color:var(--mut);margin-bottom:4px;text-transform:uppercase;letter-spacing:.02em}
+.campo .hint{display:block;font-size:12px;color:var(--mut);margin-top:3px;font-weight:400;text-transform:none;letter-spacing:0}
+.campo input[type=text],.campo input[type=date],.campo input[type=time],.campo input[type=number],.campo input[type=tel],.campo input[type=email],.campo input[type=url],.campo select,.campo textarea{
+  width:100%;border:1px solid var(--line);border-radius:10px;padding:11px 12px;background:var(--bg);font-size:16px;min-height:46px}
+.campo textarea{min-height:80px;resize:vertical}
+.campo input:focus,.campo select:focus,.campo textarea:focus{outline:2px solid var(--pri);border-color:var(--pri)}
+.linha2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+@media (max-width:380px){.linha2{grid-template-columns:1fr}}
+.checks{display:flex;flex-wrap:wrap;gap:8px}
+.chk{display:inline-flex;align-items:center;gap:8px;border:1px solid var(--line);border-radius:10px;padding:9px 12px;background:var(--bg);cursor:pointer;font-size:15px}
+.chk input{width:20px;height:20px;margin:0;accent-color:var(--pri)}
+.chk.on{border-color:var(--pri);background:color-mix(in srgb,var(--pri) 12%,var(--bg))}
+.subcard{border:1px dashed var(--line);border-radius:12px;padding:10px 12px;margin:10px 0}
+.subcard>.sc-head{display:flex;align-items:center;gap:8px;font-weight:700;margin-bottom:4px}
+.subcard>.sc-head .x{margin-left:auto}
+.fotogrupo{border:1px solid var(--line);border-radius:12px;padding:10px;margin:8px 0;background:var(--bg)}
+.fg-head{display:flex;align-items:center;gap:8px;font-weight:600;font-size:15px}
+.fg-head .cnt{margin-left:auto;color:var(--mut);font-size:13px;font-weight:400}
+.thumbs{display:flex;flex-wrap:wrap;gap:8px;margin:8px 0}
+.thumbs img{width:78px;height:78px;object-fit:cover;border-radius:8px;border:1px solid var(--line);cursor:pointer}
+.thumbs .env{position:relative}
+.thumbs .env::after{content:"✓";position:absolute;right:3px;bottom:3px;background:var(--ok);color:#fff;font-size:11px;border-radius:999px;width:18px;height:18px;display:flex;align-items:center;justify-content:center}
+.fg-btns{display:flex;gap:8px}
+.fg-btns .btn{flex:1;padding:9px;min-height:42px;font-size:14px}
+.docrow{display:flex;align-items:center;gap:8px;flex-wrap:wrap;border-bottom:1px solid var(--line);padding:10px 0}
+.docrow:last-child{border-bottom:0}
+.docrow .chk{flex:1;min-width:180px}
+.docrow .fotos-doc{width:100%}
+.rodape{position:fixed;left:0;right:0;bottom:0;background:var(--card);border-top:1px solid var(--line);padding:10px 12px calc(10px + env(safe-area-inset-bottom));z-index:30}
+.rodape .inner{max-width:760px;margin:0 auto;display:flex;gap:8px;align-items:center}
+.status-sync{font-size:13px;color:var(--mut);flex:1;min-width:0}
+.status-sync b{color:var(--txt)}
+.pt{display:inline-block;width:9px;height:9px;border-radius:999px;background:#999;margin-right:5px}
+.pt.on{background:var(--ok)} .pt.off{background:var(--err)}
+#assinatura{width:100%;height:180px;border:1px solid var(--line);border-radius:12px;background:#fff;touch-action:none;display:block}
+.modal{position:fixed;inset:0;background:rgba(0,0,0,.9);z-index:100;display:none;flex-direction:column;align-items:center;justify-content:center;padding:12px}
+.modal.ativa{display:flex}
+.modal img{max-width:100%;max-height:75vh;border-radius:8px}
+.modal .acoes{display:flex;gap:10px;margin-top:12px}
+.modal .acoes .btn{background:#222;color:#fff;border-color:#444}
+.toast{position:fixed;left:50%;transform:translateX(-50%);bottom:90px;background:#222;color:#fff;padding:10px 16px;border-radius:12px;font-size:14px;z-index:200;opacity:0;transition:opacity .2s;pointer-events:none;max-width:90vw;text-align:center}
+.toast.on{opacity:1}
+.gps{font-size:13px;color:var(--mut);display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.vazio{text-align:center;color:var(--mut);padding:40px 12px}
+.pill{font-size:12px;background:var(--badge-rasc);border-radius:999px;padding:2px 8px}
+.progresso{height:6px;background:var(--line);border-radius:3px;overflow:hidden;margin-top:6px}
+.progresso>div{height:100%;background:var(--pri);width:0;transition:width .3s}
+.calc{background:var(--bg);border-radius:10px;padding:10px 12px;font-size:15px}
+.calc b{font-size:18px}
+.ok{color:var(--ok)} .erro{color:var(--err)} .warn{color:var(--warn)}
+kbd{background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:1px 6px;font-size:13px}
+</style>
+</head>
+<body>
+
+<!-- ===================== TELA: LISTA ===================== -->
+<section id="tela-lista" class="tela ativa">
+  <header class="topo">
+    <img src="icon-192.png" alt="" width="34" height="34" style="border-radius:8px">
+    <h1>Vistorias Fumo <small>Safra 2026/2027 — laudo prejuízo por falta de energia</small></h1>
+    <button id="btn-config" title="Configurações">⚙</button>
+  </header>
+  <main>
+    <button id="btn-nova" class="btn pri bloco" style="font-size:17px">＋ Nova vistoria</button>
+    <div id="lista" style="margin-top:12px"></div>
+  </main>
+  <div class="rodape"><div class="inner">
+    <div class="status-sync" id="status-sync"></div>
+    <button id="btn-sync" class="btn acc peq">Enviar agora</button>
+  </div></div>
+</section>
+
+<!-- ===================== TELA: CONFIG ===================== -->
+<section id="tela-config" class="tela">
+  <header class="topo">
+    <button class="voltar">‹ Voltar</button>
+    <h1>Configurações</h1>
+  </header>
+  <main>
+    <div class="card">
+      <div class="campo"><label>Nome do vistoriador (quem preenche neste celular)</label><input type="text" id="cfg-vistoriador" placeholder="ex.: Dra. Fulana / Estagiário João"></div>
+      <div class="campo"><label>URL do script do Google (termina em /exec)</label><input type="url" id="cfg-url" placeholder="https://script.google.com/macros/s/.../exec" inputmode="url"></div>
+      <div class="campo"><label>Chave da equipe</label><input type="text" id="cfg-chave" placeholder="a mesma chave definida no script"></div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button id="cfg-salvar" class="btn pri">Salvar</button>
+        <button id="cfg-testar" class="btn">Testar conexão</button>
+      </div>
+      <div id="cfg-resultado" class="dica" style="margin-top:8px"></div>
+    </div>
+    <div class="card">
+      <h3 style="font-size:15px;margin-bottom:6px">Armazenamento neste celular</h3>
+      <div id="cfg-storage" class="dica">…</div>
+      <div class="dica">Os dados ficam guardados no aparelho até serem enviados. Não limpe os dados do Chrome nem desinstale o app com vistorias pendentes.</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px">
+        <button id="cfg-backup" class="btn peq">Exportar backup (.json)</button>
+        <label class="btn peq" style="cursor:pointer">Importar backup <input type="file" id="cfg-importar" accept="application/json" hidden></label>
+      </div>
+    </div>
+    <div class="card dica">Versão <span id="versao"></span> · <button id="cfg-atualizar" class="btn peq">Verificar atualização</button></div>
+  </main>
+</section>
+
+<!-- ===================== TELA: VISTORIA ===================== -->
+<section id="tela-vistoria" class="tela">
+  <header class="topo">
+    <button class="voltar">‹ Lista</button>
+    <h1 id="v-titulo">Vistoria <small id="v-sub"></small></h1>
+    <span id="v-salvo" style="font-size:12px;opacity:.85">salvo</span>
+  </header>
+  <main id="v-form"></main>
+  <div class="rodape"><div class="inner" id="v-rodape"></div></div>
+</section>
+
+<input type="file" id="in-cam" accept="image/*" capture="environment" hidden>
+<input type="file" id="in-gal" accept="image/*" multiple hidden>
+
+<div class="modal" id="modal-foto">
+  <img id="modal-img" alt="">
+  <div id="modal-legenda" style="color:#ddd;font-size:13px;margin-top:8px;text-align:center"></div>
+  <div class="acoes">
+    <button class="btn" id="modal-fechar">Fechar</button>
+    <button class="btn" id="modal-excluir" style="color:#ff8a80">Excluir foto</button>
+  </div>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+'use strict';
+const APP_VERSAO = '1.0.0';
+
+/* ====================== DEFINIÇÕES (espelham a ficha em papel) ====================== */
+const ESTADO_CIVIL = ['', 'Solteiro(a)', 'Casado(a)', 'União estável', 'Divorciado(a)', 'Separado(a)', 'Viúvo(a)'];
+const UFS = ['PR','SC','RS','SP','MG','MS','MT','GO','BA','AL','SE','PB','PE','RN','CE','PI','MA','TO','PA','AM','AC','RO','RR','AP','ES','RJ','DF'];
+const FONTES_RESERVA = [['gerador','Gerador próprio'],['solar','Energia solar com backup'],['nenhum','Nenhum']];
+const CAT_ESTUFA = [['externa','Estufa externa'],['interior','Interior'],['carregamento','Carregamento'],['descartado','Material descartado'],['aproveitado','Fumo aproveitado']];
+const CAT_GERAL = [['externa','Estufa por fora'],['interior','Interior / sistema de secagem'],['carregamento','Carregamento / fumo em cura'],['sem-energia','Estufa sem energia (foto/vídeo datado)'],['descartado','Material descartado'],['termometro','Termômetro / painel'],['padrao-luz','Padrão de luz da estufa (c/ número visível)']];
+const DOCS = [['rg','RG'],['cpf','CPF'],['certidao-casamento','Certidão de casamento'],['comprovante-residencia','Comprovante de residência atual'],['nota-produtor','Nota de produtor / nota de fumo'],['declaracao-luz-cedida','Declaração de luz cedida'],['contrato-integracao','Contrato de integração'],['conta-energia','Conta de energia / identificação da UC'],['protocolo-copel','Protocolo(s) COPEL'],['fotos-videos-produtor','Fotos / vídeos feitos pelo produtor']];
+const CAMPOS_ESTUFA = [
+  ['modelo','Modelo / tipo','ex.: Carijó, convencional','text','lst-modelos'],
+  ['fonteEnergia','Fonte de energia','elétrica / lenha / GLP','text','lst-fontes'],
+  ['metragem','Metragem / dimensões','medidas em metros — anexar foto contemporânea da estufa','text'],
+  ['capacidadeTotal','Capacidade total','nº de estaleiros / grades da estufa','text'],
+  ['gradesCarregadas','Grades carregadas no evento','quantas estavam efetivamente carregadas','text'],
+  ['capacidadeMediaGrade','Capacidade média por grade (kg)','e relação com a classe do fumo em secagem','text'],
+  ['dataCarregamento','Data do carregamento','','date'],
+  ['quantidadeCarregadaKg','Quantidade carregada (kg)','','number'],
+  ['quantidadePes','Quantidade (pés)','','number'],
+  ['classeEstimada','Classe estimada do fumo','à época do evento','text'],
+  ['estagioCura','Estágio da cura no momento da queda','ex.: secagem da folha / fixação de cor / secagem do talo — o impacto varia conforme a fase','text','lst-estagios'],
+  ['temperaturaQueda','Temperatura aferida no momento da queda (°C)','','number'],
+  ['religamento','Religamento da estufa','data e hora do religamento, temperatura adotada e por quanto tempo a cura continuou após o retorno da energia','textarea'],
+  ['providencias','Providências adotadas pelo produtor','o que foi feito para preservar a qualidade do produto','textarea'],
+  ['perdaTotalPct','Perda total (%)','','number'],
+  ['perdaTotalKg','Perda total (kg)','','number'],
+  ['desclassPct','Desclassificação (%)','','number'],
+  ['desclassKg','Desclassificação (kg)','','number'],
+  ['desclassDe','Desclassificação — classe DE','','text'],
+  ['desclassPara','Desclassificação — classe PARA','','text'],
+  ['pesoDescartado','Peso do fumo descartado (kg)','','number'],
+  ['pesoAproveitado','Peso do fumo aproveitado (kg)','','number'],
+];
+
+/* ====================== UTILIDADES ====================== */
+const $ = (s, el = document) => el.querySelector(s);
+const $$ = (s, el = document) => [...el.querySelectorAll(s)];
+const uuid = () => (crypto.randomUUID ? crypto.randomUUID() : 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => { const r = Math.random()*16|0; return (c==='x'?r:(r&3|8)).toString(16); }));
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const pad = (n) => String(n).padStart(2, '0');
+const fmtData = (iso) => { if (!iso) return ''; const [a, m, d] = iso.split('-'); return `${d}/${m}/${a}`; };
+const fmtDataHora = (d) => `${pad(d.getDate())}/${pad(d.getMonth()+1)}/${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+const hojeISO = () => { const d = new Date(); return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`; };
+const carimboArquivo = (d) => `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}_${pad(d.getHours())}h${pad(d.getMinutes())}${pad(d.getSeconds())}`;
+function toast(msg, ms = 2500) { const t = $('#toast'); t.textContent = msg; t.classList.add('on'); clearTimeout(toast._t); toast._t = setTimeout(() => t.classList.remove('on'), ms); }
+function getPath(obj, path) { return path.split('.').reduce((o, k) => (o == null ? undefined : o[k]), obj); }
+function setPath(obj, path, val) { const ks = path.split('.'); let o = obj; for (let i = 0; i < ks.length - 1; i++) { if (o[ks[i]] == null) o[ks[i]] = /^\d+$/.test(ks[i+1]) ? [] : {}; o = o[ks[i]]; } o[ks[ks.length-1]] = val; }
+function mascaraCPF(v) { v = v.replace(/\D/g, '').slice(0, 11); return v.replace(/(\d{3})(\d)/, '$1.$2').replace(/(\d{3})(\d)/, '$1.$2').replace(/(\d{3})(\d{1,2})$/, '$1-$2'); }
+function mascaraFone(v) { v = v.replace(/\D/g, '').slice(0, 11); if (v.length > 6) return v.replace(/(\d{2})(\d{4,5})(\d{0,4})/, '($1) $2-$3'); if (v.length > 2) return v.replace(/(\d{2})(\d{0,5})/, '($1) $2'); return v; }
+function cpfValido(cpf) { cpf = (cpf || '').replace(/\D/g, ''); if (cpf.length !== 11 || /^(\d)\1+$/.test(cpf)) return false; let s = 0; for (let i = 0; i < 9; i++) s += +cpf[i] * (10 - i); let r = (s * 10) % 11; if (r === 10) r = 0; if (r !== +cpf[9]) return false; s = 0; for (let i = 0; i < 10; i++) s += +cpf[i] * (11 - i); r = (s * 10) % 11; if (r === 10) r = 0; return r === +cpf[10]; }
+const rotuloStatus = { rascunho: 'Rascunho', pronta: 'Pronta p/ envio', enviando: 'Enviando…', enviada: 'Enviada ✓', erro: 'Erro no envio' };
+
+/* ====================== BANCO LOCAL (IndexedDB) ====================== */
+const DB = (() => {
+  let db;
+  function abrir() {
+    if (db) return Promise.resolve(db);
+    return new Promise((res, rej) => {
+      const r = indexedDB.open('vistoriasFumo', 1);
+      r.onupgradeneeded = () => {
+        const d = r.result;
+        d.createObjectStore('vistorias', { keyPath: 'id' });
+        const f = d.createObjectStore('fotos', { keyPath: 'id' });
+        f.createIndex('vistoriaId', 'vistoriaId');
+        d.createObjectStore('config', { keyPath: 'k' });
+      };
+      r.onsuccess = () => { db = r.result; res(db); };
+      r.onerror = () => rej(r.error);
+    });
+  }
+  const tx = async (store, modo, fn) => { const d = await abrir(); return new Promise((res, rej) => { const t = d.transaction(store, modo); const s = t.objectStore(store); const req = fn(s); t.oncomplete = () => res(req && req.result); t.onerror = () => rej(t.error); t.onabort = () => rej(t.error); }); };
+  const req = (r) => new Promise((res, rej) => { r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); });
+  return {
+    put: (store, v) => tx(store, 'readwrite', s => s.put(v)),
+    get: async (store, k) => { const d = await abrir(); return req(d.transaction(store).objectStore(store).get(k)); },
+    del: (store, k) => tx(store, 'readwrite', s => s.delete(k)),
+    all: async (store) => { const d = await abrir(); return req(d.transaction(store).objectStore(store).getAll()); },
+    fotosDe: async (vid) => { const d = await abrir(); return req(d.transaction('fotos').objectStore('fotos').index('vistoriaId').getAll(vid)); },
+  };
+})();
+async function getCfg() { const c = await DB.get('config', 'cfg'); return c ? c.v : { url: '', chave: '', vistoriador: '' }; }
+async function setCfg(v) { await DB.put('config', { k: 'cfg', v }); }
+
+/* ====================== MODELO ====================== */
+function novoEvento() { return { id: uuid(), dataInicio: '', horaInicio: '', dataRetorno: '', horaRetorno: '' }; }
+function novaEstufa() { const e = { id: uuid() }; CAMPOS_ESTUFA.forEach(c => e[c[0]] = ''); return e; }
+function novoProtocolo() { return { id: uuid(), numero: '', data: '' }; }
+function novaVistoria(vistoriador) {
+  const agora = new Date().toISOString();
+  return {
+    id: uuid(), versaoApp: APP_VERSAO, criadoEm: agora, atualizadoEm: agora, status: 'rascunho', vistoriador: vistoriador || '',
+    produtor: { dataVisita: hojeISO(), nome: '', cpf: '', rg: '', conjuge: '', estadoCivil: '', municipio: '', uf: 'PR', localidade: '', whatsapp: '', integradora: '', contratoIntegracao: '', notaProdutor: '', uc: '', titularConta: '', ucCedida: '', fontesReserva: [] },
+    safra: { estimativaPes: '', estimativaKg: '', totalEstufas: '', estufasAfetadas: '' },
+    eventos: [novoEvento()], protocolos: [novoProtocolo()], clima: '', tempoTotalSemEnergia: '', tempoTotalMinutos: null,
+    estufas: [novaEstufa()],
+    fotosGerais: { checks: [], dataImagens: '' },
+    documentos: { coletados: [] },
+    observacoes: '', assinatura: null, gps: null,
+    enviadaEm: null, pastaDriveUrl: '', fichaUrl: '', erro: ''
+  };
+}
+
+/* ====================== ESTADO ====================== */
+let V = null;             // vistoria aberta
+let fotosCache = [];      // fotos da vistoria aberta
+const urlsThumb = new Map();
+let posAtual = null, watchId = null;
+let salvarTimer = null;
+let sincronizando = false;
+
+/* ====================== NAVEGAÇÃO ====================== */
+function mostrar(id) { $$('.tela').forEach(t => t.classList.toggle('ativa', t.id === id)); window.scrollTo(0, 0); }
+$$('.voltar').forEach(b => b.onclick = () => irLista());
+$('#btn-config').onclick = () => abrirConfig();
+$('#btn-nova').onclick = async () => { const cfg = await getCfg(); const v = novaVistoria(cfg.vistoriador); await DB.put('vistorias', v); abrirVistoria(v.id); };
+$('#btn-sync').onclick = () => sincronizar(true);
+async function irLista() { if (watchId != null) { navigator.geolocation.clearWatch(watchId); watchId = null; } clearTimeout(salvarTimer); await salvarAgora(); V = null; await renderLista(); mostrar('tela-lista'); }
+document.addEventListener('visibilitychange', () => { if (document.hidden && V) { clearTimeout(salvarTimer); salvarAgora(); } });
+
+/* ====================== LISTA ====================== */
+async function renderLista() {
+  const vs = (await DB.all('vistorias')).sort((a, b) => (b.atualizadoEm || '').localeCompare(a.atualizadoEm || ''));
+  const fotos = await DB.all('fotos');
+  const cont = {}; fotos.forEach(f => cont[f.vistoriaId] = (cont[f.vistoriaId] || 0) + 1);
+  const el = $('#lista');
+  if (!vs.length) { el.innerHTML = '<div class="vazio">Nenhuma vistoria ainda.<br>Toque em <b>Nova vistoria</b> para começar.</div>'; }
+  else el.innerHTML = vs.map(v => `
+    <div class="card lista" data-id="${v.id}">
+      <div class="info">
+        <div class="nome">${esc(v.produtor.nome) || '<i style="color:var(--mut)">Sem nome</i>'}</div>
+        <div class="meta">${esc([v.produtor.municipio, fmtData(v.produtor.dataVisita)].filter(Boolean).join(' · '))} · ${v.estufas.length} estufa(s) · ${cont[v.id] || 0} foto(s)${v.vistoriador ? ' · ' + esc(v.vistoriador) : ''}</div>
+        ${v.status === 'erro' && v.erro ? `<div class="meta erro">${esc(v.erro)}</div>` : ''}
+      </div>
+      <span class="badge st-${v.status}">${rotuloStatus[v.status]}</span>
+    </div>`).join('');
+  $$('.card.lista', el).forEach(c => c.onclick = () => abrirVistoria(c.dataset.id));
+  atualizarStatusSync(vs);
+}
+function atualizarStatusSync(vs) {
+  const pend = (vs || []).filter(v => v.status === 'pronta' || v.status === 'erro').length;
+  const on = navigator.onLine;
+  $('#status-sync').innerHTML = `<span class="pt ${on ? 'on' : 'off'}"></span>${on ? 'Online' : 'Sem internet'} — <b>${pend}</b> pendente(s)${!on && pend ? '<br>envio automático quando houver sinal' : ''}${sincronizando ? '<br><b>Enviando…</b> ' + (sincronizar.msg || '') : ''}`;
+  $('#btn-sync').disabled = !on || sincronizando || !pend;
+}
+window.addEventListener('online', () => { renderLista(); sincronizar(false); });
+window.addEventListener('offline', () => renderLista());
+
+/* ====================== CONFIG ====================== */
+async function abrirConfig() {
+  const c = await getCfg();
+  $('#cfg-vistoriador').value = c.vistoriador || ''; $('#cfg-url').value = c.url || ''; $('#cfg-chave').value = c.chave || '';
+  $('#cfg-resultado').textContent = ''; $('#versao').textContent = APP_VERSAO;
+  mostrar('tela-config');
+  try { const est = await navigator.storage.estimate(); const p = await navigator.storage.persisted(); $('#cfg-storage').innerHTML = `Em uso: <b>${(est.usage/1048576).toFixed(1)} MB</b> de ${(est.quota/1048576/1024).toFixed(1)} GB disponíveis · Armazenamento persistente: <b>${p ? 'sim ✓' : 'não'}</b>`; } catch { $('#cfg-storage').textContent = ''; }
+}
+$('#cfg-salvar').onclick = async () => { await setCfg({ vistoriador: $('#cfg-vistoriador').value.trim(), url: $('#cfg-url').value.trim(), chave: $('#cfg-chave').value.trim() }); toast('Configurações salvas'); };
+$('#cfg-testar').onclick = async () => {
+  await $('#cfg-salvar').onclick();
+  const r = $('#cfg-resultado'); r.textContent = 'Testando…';
+  try { const j = await api('ping', {}); r.innerHTML = `<span class="ok">✓ Conectado. Planilha: ${esc(j.planilha || '')} · Pasta raiz: ${esc(j.pasta || '')} · Script v${esc(j.versao || '')}</span>`; }
+  catch (e) { r.innerHTML = `<span class="erro">✗ ${esc(e.message)}</span>`; }
+};
+$('#cfg-atualizar').onclick = async () => { const reg = await navigator.serviceWorker?.getRegistration(); if (reg) { await reg.update(); toast('Verificado. Se houver nova versão, feche e reabra o app.'); } else toast('Sem service worker (abra pelo endereço https)'); };
+$('#cfg-backup').onclick = async () => {
+  const vs = await DB.all('vistorias'); const fs = await DB.all('fotos');
+  const fotos = []; for (const f of fs) fotos.push({ ...f, blob: undefined, base64: await blobParaBase64(f.blob) });
+  const blob = new Blob([JSON.stringify({ versao: APP_VERSAO, exportadoEm: new Date().toISOString(), vistorias: vs, fotos })], { type: 'application/json' });
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `backup_vistorias_${carimboArquivo(new Date())}.json`; a.click();
+};
+$('#cfg-importar').onchange = async (ev) => {
+  const f = ev.target.files[0]; if (!f) return;
+  try { const j = JSON.parse(await f.text()); let n = 0; for (const v of j.vistorias || []) { await DB.put('vistorias', v); n++; }
+    for (const ft of j.fotos || []) { const blob = await (await fetch(ft.base64)).blob(); delete ft.base64; await DB.put('fotos', { ...ft, blob }); }
+    toast(`${n} vistoria(s) importada(s)`); } catch (e) { toast('Falha ao importar: ' + e.message); }
+  ev.target.value = '';
+};
+
+/* ====================== VISTORIA: ABRIR / SALVAR ====================== */
+async function abrirVistoria(id) {
+  V = await DB.get('vistorias', id); if (!V) return;
+  fotosCache = await DB.fotosDe(id);
+  mostrar('tela-vistoria');
+  renderVistoria();
+  iniciarGPS();
+}
+function marcarAlterada() {
+  V.atualizadoEm = new Date().toISOString();
+  if (V.status === 'enviada' || V.status === 'erro') { /* mantém; usuário decide reenviar */ }
+  $('#v-salvo').textContent = 'salvando…';
+  clearTimeout(salvarTimer);
+  salvarTimer = setTimeout(salvarAgora, 400);
+}
+async function salvarAgora() { if (!V) return; await DB.put('vistorias', V); $('#v-salvo').textContent = 'salvo ✓'; }
+
+/* ====================== VISTORIA: RENDER ====================== */
+function campo(label, path, opts = {}) {
+  const val = getPath(V, path) ?? '';
+  const type = opts.type || 'text';
+  const hint = opts.hint ? `<span class="hint">${esc(opts.hint)}</span>` : '';
+  let inp;
+  if (type === 'textarea') inp = `<textarea data-path="${path}" placeholder="${esc(opts.placeholder || '')}">${esc(val)}</textarea>`;
+  else if (type === 'select') inp = `<select data-path="${path}">${opts.opcoes.map(o => `<option value="${esc(o)}" ${o === val ? 'selected' : ''}>${esc(o) || '—'}</option>`).join('')}</select>`;
+  else inp = `<input type="${type}" data-path="${path}" value="${esc(val)}" ${opts.list ? `list="${opts.list}"` : ''} ${opts.inputmode ? `inputmode="${opts.inputmode}"` : ''} ${opts.mask ? `data-mask="${opts.mask}"` : ''} ${type === 'number' ? 'step="any"' : ''} placeholder="${esc(opts.placeholder || '')}">`;
+  return `<div class="campo"><label>${esc(label)}</label>${inp}${hint}</div>`;
+}
+function checkMulti(label, path, valor) {
+  const arr = getPath(V, path) || []; const on = arr.includes(valor);
+  return `<label class="chk ${on ? 'on' : ''}"><input type="checkbox" data-path="${path}" data-tipo="multi" value="${esc(valor)}" ${on ? 'checked' : ''}>${esc(label)}</label>`;
+}
+function radio(label, path, valor) {
+  const on = getPath(V, path) === valor;
+  return `<label class="chk ${on ? 'on' : ''}"><input type="radio" name="r-${path}" data-path="${path}" data-tipo="radio" value="${esc(valor)}" ${on ? 'checked' : ''}>${esc(label)}</label>`;
+}
+function fotoGrupo(grupo, cat, rotulo, estufaId) {
+  const fs = fotosCache.filter(f => f.grupo === grupo && f.categoria === cat && (grupo !== 'estufa' || f.estufaId === estufaId));
+  return `<div class="fotogrupo" data-grupo="${grupo}" data-cat="${cat}" data-rotulo="${esc(rotulo)}" ${estufaId ? `data-estufa="${estufaId}"` : ''}>
+    <div class="fg-head"><span>${esc(rotulo)}</span><span class="cnt">${fs.length ? fs.length + ' foto(s)' : 'sem fotos'}</span></div>
+    <div class="thumbs">${fs.map(thumbHtml).join('')}</div>
+    <div class="fg-btns"><button class="btn btn-cam" type="button">📷 Câmera</button><button class="btn btn-gal" type="button">🖼 Galeria</button></div>
+  </div>`;
+}
+function thumbHtml(f) {
+  if (!urlsThumb.has(f.id)) urlsThumb.set(f.id, URL.createObjectURL(f.blob));
+  return `<span class="${f.enviada ? 'env' : ''}"><img src="${urlsThumb.get(f.id)}" data-foto="${f.id}" alt="" loading="lazy"></span>`;
+}
+function tituloEstufa(i) { return `Estufa ${i + 1}`; }
+function estufaHtml(e, i) {
+  return `<details class="subcard" open data-estufa-id="${e.id}"><summary class="sc-head" style="cursor:pointer">🏠 ${tituloEstufa(i)} <span class="pill">${esc(e.modelo || '')}</span>${V.estufas.length > 1 ? `<button class="btn peq perigo x rm-estufa" type="button" data-id="${e.id}">remover</button>` : ''}</summary>
+    <div class="linha2">${CAMPOS_ESTUFA.map(c => campo(c[1], `estufas.${i}.${c[0]}`, { hint: c[2], type: c[3], list: c[4] })).join('')}</div>
+    <div class="campo"><label>Registro fotográfico da ${tituloEstufa(i)}</label></div>
+    ${CAT_ESTUFA.map(([k, r]) => fotoGrupo('estufa', k, r, e.id)).join('')}
+  </details>`;
+}
+function eventoHtml(ev, i) {
+  const d = duracaoEvento(ev);
+  return `<div class="subcard" data-evento-id="${ev.id}"><div class="sc-head">⚡ Evento ${i + 1} ${V.eventos.length > 1 ? `<button class="btn peq perigo x rm-evento" type="button" data-id="${ev.id}">remover</button>` : ''}</div>
+    <div class="linha2">${campo('Data início', `eventos.${i}.dataInicio`, { type: 'date' })}${campo('Horário início', `eventos.${i}.horaInicio`, { type: 'time' })}
+    ${campo('Data retorno', `eventos.${i}.dataRetorno`, { type: 'date' })}${campo('Horário retorno', `eventos.${i}.horaRetorno`, { type: 'time' })}</div>
+    <div class="dica">Duração: <b>${d == null ? '—' : (d < 0 ? '<span class="erro">retorno antes do início!</span>' : fmtMin(d))}</b></div>
+  </div>`;
+}
+function fmtMin(m) { return `${Math.floor(m / 60)}h${pad(m % 60)} (${m} min)`; }
+function duracaoEvento(ev) { if (!ev.dataInicio || !ev.horaInicio || !ev.dataRetorno || !ev.horaRetorno) return null; const a = new Date(`${ev.dataInicio}T${ev.horaInicio}`), b = new Date(`${ev.dataRetorno}T${ev.horaRetorno}`); return Math.round((b - a) / 60000); }
+function recalcularTempo() {
+  const ds = V.eventos.map(duracaoEvento).filter(d => d != null && d >= 0);
+  if (!ds.length) { V.tempoTotalMinutos = null; V.tempoTotalSemEnergia = ''; }
+  else { const t = ds.reduce((a, b) => a + b, 0); V.tempoTotalMinutos = t; V.tempoTotalSemEnergia = fmtMin(t); }
+  const el = $('#tempo-total'); if (el) el.innerHTML = V.tempoTotalSemEnergia ? `<b>${V.tempoTotalSemEnergia}</b> — soma de ${ds.length} evento(s)` : '— (preencha datas e horários dos eventos)';
+}
+function docRow([k, rotulo]) {
+  const fs = fotosCache.filter(f => f.grupo === 'doc' && f.categoria === k);
+  const on = (V.documentos.coletados || []).includes(k) || fs.length > 0;
+  return `<div class="docrow"><label class="chk ${on ? 'on' : ''}"><input type="checkbox" data-path="documentos.coletados" data-tipo="multi" value="${k}" ${on ? 'checked' : ''}>${esc(rotulo)}</label>
+    <div class="fotos-doc fotogrupo" data-grupo="doc" data-cat="${k}" data-rotulo="${esc(rotulo)}" style="margin:0;background:transparent;border:0;padding:0">
+      <div class="thumbs" style="margin:4px 0">${fs.map(thumbHtml).join('')}</div>
+      <div class="fg-btns"><button class="btn peq btn-cam" type="button">📷 Fotografar</button><button class="btn peq btn-gal" type="button">🖼 Galeria</button></div>
+    </div></div>`;
+}
+function renderVistoria() {
+  const p = 'produtor.';
+  $('#v-sub').textContent = `${rotuloStatus[V.status]}${V.vistoriador ? ' · ' + V.vistoriador : ''}`;
+  $('#v-form').innerHTML = `
+  <datalist id="lst-modelos"><option value="Carijó"><option value="Convencional"><option value="Estufa elétrica de ar forçado"><option value="Estufa a lenha"><option value="Estufa loose leaf"></datalist>
+  <datalist id="lst-fontes"><option value="Elétrica"><option value="Lenha"><option value="GLP"><option value="Elétrica + lenha"><option value="Elétrica + GLP"></datalist>
+  <datalist id="lst-estagios"><option value="Murcha / amarelecimento"><option value="Fixação de cor"><option value="Secagem da folha (lâmina)"><option value="Secagem do talo"></datalist>
+  <datalist id="lst-municipios"><option value="Rio Azul"><option value="Irati"><option value="Rebouças"><option value="Imbituva"><option value="Prudentópolis"><option value="Ipiranga"><option value="Ivaí"><option value="Mallet"><option value="São Mateus do Sul"><option value="Inácio Martins"><option value="Guamiranga"><option value="Fernandes Pinheiro"><option value="Teixeira Soares"><option value="Cruz Machado"><option value="Paulo Frontin"></datalist>
+
+  ${V.status === 'enviada' ? `<div class="aviso">✓ Vistoria enviada em ${esc(fmtDataHora(new Date(V.enviadaEm)))}. ${V.pastaDriveUrl ? `<a href="${esc(V.pastaDriveUrl)}" target="_blank">Abrir pasta no Drive</a>` : ''} Se editar algo, toque em <b>Reenviar</b> no final para atualizar a planilha e a ficha.</div>` : ''}
+  ${V.status === 'erro' ? `<div class="aviso erro">Falha no último envio: ${esc(V.erro)}. Será tentado novamente automaticamente.</div>` : ''}
+
+  <details class="secao" open><summary><span class="num">1</span>Identificação do produtor e da UC<span class="seta">›</span></summary><div class="corpo">
+    <div class="gps" id="gps-box"></div>
+    <div class="linha2">
+      ${campo('Data da visita', p + 'dataVisita', { type: 'date' })}
+      ${campo('Vistoriador', 'vistoriador')}
+    </div>
+    ${campo('Nome do produtor', p + 'nome', { placeholder: 'nome completo' })}
+    <div class="linha2">${campo('CPF', p + 'cpf', { type: 'tel', mask: 'cpf', inputmode: 'numeric' })}${campo('RG', p + 'rg')}</div>
+    <div class="linha2">${campo('Cônjuge', p + 'conjuge')}${campo('Estado civil', p + 'estadoCivil', { type: 'select', opcoes: ESTADO_CIVIL })}</div>
+    <div class="linha2">${campo('Município', p + 'municipio', { list: 'lst-municipios' })}${campo('UF', p + 'uf', { type: 'select', opcoes: UFS })}</div>
+    ${campo('Localidade / propriedade', p + 'localidade')}
+    <div class="linha2">${campo('WhatsApp', p + 'whatsapp', { type: 'tel', mask: 'fone', inputmode: 'numeric' })}${campo('Empresa integradora / fumageira', p + 'integradora')}</div>
+    <div class="linha2">${campo('Contrato de integração nº', p + 'contratoIntegracao')}${campo('Nota de produtor nº', p + 'notaProdutor')}</div>
+    <div class="linha2">${campo('Unidade consumidora (UC) nº', p + 'uc')}${campo('Titular da conta de energia', p + 'titularConta', { hint: 'se diverso do produtor' })}</div>
+    <div class="campo"><label>UC cedida ao produtor?</label><div class="checks">${radio('Sim', p + 'ucCedida', 'Sim')}${radio('Não', p + 'ucCedida', 'Não')}</div></div>
+    <div class="campo"><label>Fontes reservas de energia na propriedade</label><div class="checks">${FONTES_RESERVA.map(([k, r]) => checkMulti(r, p + 'fontesReserva', k)).join('')}</div></div>
+  </div></details>
+
+  <details class="secao"><summary><span class="num">2</span>Estimativa da safra<span class="seta">›</span></summary><div class="corpo">
+    <div class="linha2">${campo('Estimativa (pés)', 'safra.estimativaPes', { type: 'number' })}${campo('Estimativa (kg)', 'safra.estimativaKg', { type: 'number' })}
+    ${campo('Nº total de estufas', 'safra.totalEstufas', { type: 'number', hint: 'na propriedade' })}${campo('Nº de estufas afetadas', 'safra.estufasAfetadas', { type: 'number', hint: 'pelo evento' })}</div>
+  </div></details>
+
+  <details class="secao"><summary><span class="num">3</span>Interrupções no fornecimento de energia<span class="seta">›</span></summary><div class="corpo">
+    <div class="aviso">Anote os horários <b>REAIS</b> de queda e retorno. A COPEL apresentará o relatório IQS; divergências de duração precisam de prova datada (foto/vídeo).</div>
+    <div id="eventos">${V.eventos.map(eventoHtml).join('')}</div>
+    <button class="btn bloco" id="add-evento" type="button">＋ Adicionar evento de queda</button>
+    <div class="campo"><label>Tempo total sem energia</label><div class="calc" id="tempo-total"></div></div>
+    ${campo('Condições climáticas no período', 'clima', { type: 'textarea', hint: 'tempo e temperatura ambiente' })}
+    <div class="campo"><label>Protocolos de atendimento COPEL</label><span class="hint">número e data de cada atendimento</span></div>
+    <div id="protocolos">${V.protocolos.map((pr, i) => `<div class="linha2" data-protocolo-id="${pr.id}">${campo('Protocolo nº', `protocolos.${i}.numero`)}${campo('Data', `protocolos.${i}.data`, { type: 'date' })}</div>`).join('')}</div>
+    <button class="btn peq" id="add-protocolo" type="button">＋ Adicionar protocolo</button>
+  </div></details>
+
+  <details class="secao"><summary><span class="num">4</span>Dados das estufas e da carga afetada<span class="seta">›</span></summary><div class="corpo">
+    <div class="aviso">Preencha um quadro para <b>CADA</b> estufa afetada, com dados específicos. Descrição genérica foi o que levou o laudo anterior a ser rejeitado.</div>
+    <div id="estufas">${V.estufas.map(estufaHtml).join('')}</div>
+    <button class="btn bloco pri" id="add-estufa" type="button">＋ Adicionar estufa</button>
+  </div></details>
+
+  <details class="secao"><summary><span class="num">5</span>Registro fotográfico e audiovisual<span class="seta">›</span></summary><div class="corpo">
+    <div class="dica">Fotos gerais da propriedade (feitas também pelo produtor — use <b>Galeria</b> para importar imagens recebidas). Cada foto recebe carimbo de data, hora e GPS.</div>
+    ${CAT_GERAL.map(([k, r]) => fotoGrupo('geral', k, r)).join('')}
+    <div class="linha2">${campo('Data das imagens', 'fotosGerais.dataImagens', { hint: 'se diversa da data da visita' })}<div class="campo"><label>Nº de imagens</label><div class="calc"><b>${fotosCache.length}</b> foto(s) nesta vistoria</div></div></div>
+  </div></details>
+
+  <details class="secao"><summary><span class="num">6</span>Documentos coletados (titular e cônjuge)<span class="seta">›</span></summary><div class="corpo">
+    <div class="dica">Marque o que foi coletado e fotografe cada documento (frente e verso quando houver). As imagens vão para a pasta <b>Documentos</b> do produtor.</div>
+    ${DOCS.map(docRow).join('')}
+  </div></details>
+
+  <details class="secao"><summary><span class="num">7</span>Observações<span class="seta">›</span></summary><div class="corpo">
+    ${campo('Outras observações', 'observacoes', { type: 'textarea' })}
+  </div></details>
+
+  <details class="secao" open><summary><span class="num">✍</span>Assinatura do produtor<span class="seta">›</span></summary><div class="corpo">
+    <div class="dica">Peça ao produtor para assinar com o dedo. Declaração: “Confirmo que as informações prestadas nesta vistoria são verdadeiras.”</div>
+    <canvas id="assinatura"></canvas>
+    <div style="display:flex;gap:8px;margin-top:8px"><button class="btn peq" id="ass-limpar" type="button">Limpar assinatura</button><span class="dica" id="ass-status" style="margin:auto 0"></span></div>
+  </div></details>`;
+
+  $('#v-titulo').firstChild.textContent = (V.produtor.nome || 'Vistoria') + ' ';
+  renderRodape();
+  ligarEventosForm();
+  recalcularTempo();
+  renderGPS();
+  iniciarAssinatura();
+}
+function renderRodape() {
+  const r = $('#v-rodape');
+  if (V.status === 'rascunho') r.innerHTML = `<button class="btn perigo peq" id="v-excluir" type="button">Excluir</button><button class="btn pri" style="flex:1" id="v-concluir" type="button">✔ Concluir e enviar</button>`;
+  else if (V.status === 'pronta' || V.status === 'erro') r.innerHTML = `<button class="btn peq" id="v-reabrir" type="button">Voltar a rascunho</button><button class="btn acc" style="flex:1" id="v-enviar" type="button">${navigator.onLine ? '⇧ Enviar agora' : 'Aguardando internet…'}</button>`;
+  else if (V.status === 'enviando') r.innerHTML = `<div class="status-sync"><b>Enviando…</b> ${esc(sincronizar.msg || '')}<div class="progresso"><div id="v-prog"></div></div></div>`;
+  else r.innerHTML = `<span class="status-sync ok" style="flex:1">✓ Enviada</span><button class="btn peq" id="v-reenviar" type="button">Reenviar (atualizar)</button>`;
+  $('#v-excluir')?.addEventListener('click', excluirVistoria);
+  $('#v-concluir')?.addEventListener('click', concluirVistoria);
+  $('#v-reabrir')?.addEventListener('click', async () => { V.status = 'rascunho'; V.erro = ''; await salvarAgora(); renderVistoria(); });
+  $('#v-enviar')?.addEventListener('click', () => sincronizar(true));
+  $('#v-reenviar')?.addEventListener('click', async () => { V.status = 'pronta'; await salvarAgora(); renderVistoria(); sincronizar(true); });
+}
+async function excluirVistoria() {
+  if (!confirm('Excluir esta vistoria e todas as suas fotos deste celular? Esta ação não pode ser desfeita.')) return;
+  for (const f of fotosCache) await DB.del('fotos', f.id);
+  await DB.del('vistorias', V.id); toast('Vistoria excluída'); irLista();
+}
+async function concluirVistoria() {
+  const faltas = [];
+  if (!V.produtor.nome.trim()) faltas.push('nome do produtor');
+  if (!cpfValido(V.produtor.cpf)) faltas.push('CPF válido');
+  if (!V.produtor.dataVisita) faltas.push('data da visita');
+  if (faltas.length) { toast('Falta: ' + faltas.join(', '), 4000); $('details.secao').open = true; return; }
+  const avisos = [];
+  if (!V.assinatura) avisos.push('sem assinatura do produtor');
+  if (!fotosCache.length) avisos.push('nenhuma foto registrada');
+  if (V.eventos.some(e => (duracaoEvento(e) ?? 0) < 0)) avisos.push('há evento com retorno antes do início');
+  if (avisos.length && !confirm('Atenção: ' + avisos.join('; ') + '.\n\nConcluir mesmo assim?')) return;
+  V.status = 'pronta'; V.erro = ''; await salvarAgora(); renderVistoria();
+  if (navigator.onLine) sincronizar(true); else toast('Marcada para envio. Será enviada automaticamente quando houver internet.', 4000);
+}
+
+/* ====================== VISTORIA: EVENTOS DO FORMULÁRIO ====================== */
+function ligarEventosForm() {
+  const form = $('#v-form');
+  form.oninput = (ev) => {
+    const el = ev.target; const path = el.dataset.path; if (!path) return;
+    if (el.dataset.mask === 'cpf') el.value = mascaraCPF(el.value);
+    if (el.dataset.mask === 'fone') el.value = mascaraFone(el.value);
+    if (el.dataset.tipo === 'multi') {
+      let arr = getPath(V, path) || []; arr = arr.filter(x => x !== el.value);
+      if (el.checked) { if (el.value === 'nenhum') arr = ['nenhum']; else arr = arr.filter(x => x !== 'nenhum'); arr.push(el.value); }
+      setPath(V, path, arr);
+      form.querySelectorAll(`input[data-path="${path}"]`).forEach(i => { i.checked = arr.includes(i.value); i.closest('.chk').classList.toggle('on', i.checked); });
+    } else if (el.dataset.tipo === 'radio') { setPath(V, path, el.value); form.querySelectorAll(`input[data-path="${path}"]`).forEach(i => i.closest('.chk').classList.toggle('on', i.checked)); }
+    else setPath(V, path, el.type === 'number' ? el.value : el.value);
+    if (path.startsWith('eventos.')) recalcularTempo();
+    if (path === 'produtor.nome') $('#v-titulo').firstChild.textContent = (V.produtor.nome || 'Vistoria') + ' ';
+    if (path.startsWith('estufas.') && path.endsWith('.modelo')) { const d = el.closest('details'); const pill = d && d.querySelector('.pill'); if (pill) pill.textContent = el.value; }
+    marcarAlterada();
+  };
+  form.onchange = form.oninput;
+  form.onclick = async (ev) => {
+    const b = ev.target.closest('button, img[data-foto]'); if (!b) return;
+    if (b.id === 'add-estufa') { V.estufas.push(novaEstufa()); marcarAlterada(); rerenderEstufas(); }
+    else if (b.classList.contains('rm-estufa')) { ev.preventDefault(); const e = V.estufas.find(x => x.id === b.dataset.id); const n = fotosCache.filter(f => f.estufaId === e.id).length; if (!confirm(`Remover esta estufa${n ? ` e suas ${n} foto(s)` : ''}?`)) return; for (const f of fotosCache.filter(f => f.estufaId === e.id)) { await DB.del('fotos', f.id); } fotosCache = fotosCache.filter(f => f.estufaId !== e.id); V.estufas = V.estufas.filter(x => x.id !== b.dataset.id); marcarAlterada(); rerenderEstufas(); }
+    else if (b.id === 'add-evento') { V.eventos.push(novoEvento()); marcarAlterada(); rerenderEventos(); }
+    else if (b.classList.contains('rm-evento')) { V.eventos = V.eventos.filter(x => x.id !== b.dataset.id); marcarAlterada(); rerenderEventos(); }
+    else if (b.id === 'add-protocolo') { V.protocolos.push(novoProtocolo()); marcarAlterada(); $('#protocolos').innerHTML = V.protocolos.map((pr, i) => `<div class="linha2">${campo('Protocolo nº', `protocolos.${i}.numero`)}${campo('Data', `protocolos.${i}.data`, { type: 'date' })}</div>`).join(''); }
+    else if (b.id === 'ass-limpar') { limparAssinatura(); }
+    else if (b.id === 'gps-atualizar') { capturarGPS(true); }
+    else if (b.classList.contains('btn-cam') || b.classList.contains('btn-gal')) {
+      const g = b.closest('.fotogrupo');
+      alvoFoto = { grupo: g.dataset.grupo, categoria: g.dataset.cat, rotulo: g.dataset.rotulo, estufaId: g.dataset.estufa || null, el: g };
+      (b.classList.contains('btn-cam') ? $('#in-cam') : $('#in-gal')).click();
+    }
+    else if (b.dataset.foto) abrirModalFoto(b.dataset.foto);
+  };
+}
+function rerenderEstufas() { $('#estufas').innerHTML = V.estufas.map(estufaHtml).join(''); }
+function rerenderEventos() { $('#eventos').innerHTML = V.eventos.map(eventoHtml).join(''); recalcularTempo(); }
+
+/* ====================== GPS ====================== */
+function iniciarGPS() {
+  if (!('geolocation' in navigator)) { renderGPS('GPS não disponível neste aparelho'); return; }
+  if (watchId != null) navigator.geolocation.clearWatch(watchId);
+  watchId = navigator.geolocation.watchPosition(pos => {
+    posAtual = { lat: pos.coords.latitude, lng: pos.coords.longitude, precisao: Math.round(pos.coords.accuracy), em: new Date().toISOString() };
+    if (V && (!V.gps || (V.gps.precisao > posAtual.precisao))) { V.gps = { ...posAtual }; marcarAlterada(); }
+    renderGPS();
+  }, err => renderGPS('GPS: ' + (err.code === 1 ? 'permissão negada — libere a localização para o Chrome' : err.message)), { enableHighAccuracy: true, maximumAge: 10000, timeout: 30000 });
+}
+function capturarGPS(forcar) {
+  navigator.geolocation.getCurrentPosition(pos => { posAtual = { lat: pos.coords.latitude, lng: pos.coords.longitude, precisao: Math.round(pos.coords.accuracy), em: new Date().toISOString() }; if (V) { V.gps = { ...posAtual }; marcarAlterada(); } renderGPS(); toast('Coordenadas atualizadas'); },
+    err => toast('Não foi possível obter o GPS: ' + err.message), { enableHighAccuracy: true, timeout: 20000, maximumAge: 0 });
+}
+function renderGPS(msg) {
+  const el = $('#gps-box'); if (!el || !V) return;
+  const g = V.gps;
+  el.innerHTML = `📍 ${g ? `<b>${g.lat.toFixed(6)}, ${g.lng.toFixed(6)}</b> (±${g.precisao} m)` : (msg || 'obtendo localização…')} <button class="btn peq" id="gps-atualizar" type="button">Atualizar GPS</button>${g ? `<a href="https://maps.google.com/?q=${g.lat},${g.lng}" target="_blank" style="font-size:12px">mapa</a>` : ''}`;
+}
+
+/* ====================== FOTOS ====================== */
+let alvoFoto = null;
+$('#in-cam').onchange = (ev) => receberArquivos(ev.target.files, 'camera').then(() => ev.target.value = '');
+$('#in-gal').onchange = (ev) => receberArquivos(ev.target.files, 'galeria').then(() => ev.target.value = '');
+async function receberArquivos(files, origem) {
+  if (!alvoFoto || !files.length) return;
+  const alvo = alvoFoto; let n = 0;
+  toast(`Processando ${files.length} imagem(ns)…`, 10000);
+  for (const file of files) {
+    try {
+      const dataOriginal = origem === 'galeria' ? (await lerDataExif(file)) || new Date(file.lastModified) : new Date();
+      const gps = posAtual || V.gps || null;
+      const prefixo = alvo.grupo === 'estufa' ? `Estufa ${V.estufas.findIndex(e => e.id === alvo.estufaId) + 1}` : (alvo.grupo === 'doc' ? 'Documento' : 'Geral');
+      const linhas = [
+        `${fmtDataHora(dataOriginal)}${origem === 'galeria' ? ' (data do arquivo original)' : ''}  ${gps ? `GPS ${gps.lat.toFixed(5)}, ${gps.lng.toFixed(5)}` : 'GPS indisponível'}`,
+        `${V.produtor.nome || 'Produtor'} — ${prefixo}: ${alvo.rotulo}`
+      ];
+      const blob = await processarImagem(file, linhas);
+      const seq = fotosCache.filter(f => f.grupo === alvo.grupo && f.categoria === alvo.categoria && f.estufaId === alvo.estufaId).length + 1;
+      const foto = { id: uuid(), vistoriaId: V.id, grupo: alvo.grupo, categoria: alvo.categoria, rotulo: alvo.rotulo, estufaId: alvo.estufaId, seq, origem, blob,
+        criadoEm: new Date().toISOString(), dataOriginal: dataOriginal.toISOString(), lat: gps ? gps.lat : null, lng: gps ? gps.lng : null, enviada: false, nomeBase: `${alvo.categoria}_${pad(seq)}_${carimboArquivo(dataOriginal)}` };
+      await DB.put('fotos', foto); fotosCache.push(foto); n++;
+      if (alvo.grupo === 'doc') { const arr = V.documentos.coletados || []; if (!arr.includes(alvo.categoria)) { arr.push(alvo.categoria); V.documentos.coletados = arr; const chk = alvo.el.closest('.docrow')?.querySelector('input[type=checkbox]'); if (chk) { chk.checked = true; chk.closest('.chk').classList.add('on'); } } }
+    } catch (e) { console.error(e); toast('Falha ao processar imagem: ' + e.message, 4000); }
+  }
+  if (V.status === 'enviada') { /* fotos novas serão enviadas ao reenviar */ }
+  marcarAlterada();
+  atualizarGrupo(alvo.el);
+  toast(`${n} foto(s) adicionada(s)`);
+}
+function atualizarGrupo(g) {
+  const fs = fotosCache.filter(f => f.grupo === g.dataset.grupo && f.categoria === g.dataset.cat && (g.dataset.grupo !== 'estufa' || f.estufaId === g.dataset.estufa));
+  g.querySelector('.thumbs').innerHTML = fs.map(thumbHtml).join('');
+  const c = g.querySelector('.cnt'); if (c) c.textContent = fs.length ? fs.length + ' foto(s)' : 'sem fotos';
+}
+function carregarImagem(file) { return new Promise((res, rej) => { const url = URL.createObjectURL(file); const img = new Image(); img.onload = () => { URL.revokeObjectURL(url); res(img); }; img.onerror = () => { URL.revokeObjectURL(url); rej(new Error('imagem inválida')); }; img.src = url; }); }
+async function processarImagem(file, linhas) {
+  const img = await carregarImagem(file);
+  const MAX = 1600; let w = img.naturalWidth, h = img.naturalHeight; const esc_ = Math.min(1, MAX / Math.max(w, h)); w = Math.round(w * esc_); h = Math.round(h * esc_);
+  const cv = document.createElement('canvas'); cv.width = w; cv.height = h; const cx = cv.getContext('2d');
+  cx.drawImage(img, 0, 0, w, h);
+  // carimbo (faixa inferior)
+  const fs = Math.max(14, Math.round(Math.min(w, h) * 0.028)); const lh = Math.round(fs * 1.35); const alt = lh * linhas.length + fs * 0.8;
+  cx.fillStyle = 'rgba(0,0,0,0.55)'; cx.fillRect(0, h - alt, w, alt);
+  cx.font = `bold ${fs}px system-ui, Arial, sans-serif`; cx.fillStyle = '#fff'; cx.textBaseline = 'top';
+  linhas.forEach((t, i) => cx.fillText(t, fs * 0.6, h - alt + fs * 0.4 + i * lh, w - fs));
+  return new Promise((res, rej) => cv.toBlob(b => b ? res(b) : rej(new Error('falha ao gerar JPEG')), 'image/jpeg', 0.85));
+}
+// Lê EXIF DateTimeOriginal (fotos importadas da galeria)
+async function lerDataExif(file) {
+  try {
+    const buf = await file.slice(0, 256 * 1024).arrayBuffer(); const dv = new DataView(buf);
+    if (dv.getUint16(0) !== 0xFFD8) return null;
+    let off = 2;
+    while (off + 4 < dv.byteLength) {
+      const marker = dv.getUint16(off); const len = dv.getUint16(off + 2);
+      if (marker === 0xFFE1 && dv.getUint32(off + 4) === 0x45786966) { // "Exif"
+        const t = off + 10; const le = dv.getUint16(t) === 0x4949; const g16 = (p) => dv.getUint16(p, le), g32 = (p) => dv.getUint32(p, le);
+        const ifd0 = t + g32(t + 4); const n = g16(ifd0); let exifIfd = 0;
+        for (let i = 0; i < n; i++) { const e = ifd0 + 2 + i * 12; if (g16(e) === 0x8769) exifIfd = t + g32(e + 8); }
+        if (exifIfd) { const m = g16(exifIfd); for (let i = 0; i < m; i++) { const e = exifIfd + 2 + i * 12; const tag = g16(e); if (tag === 0x9003 || tag === 0x9004) { const cnt = g32(e + 4); const p = t + g32(e + 8); let s = ''; for (let k = 0; k < Math.min(cnt, 19); k++) s += String.fromCharCode(dv.getUint8(p + k)); const mm = s.match(/(\d{4}):(\d{2}):(\d{2}) (\d{2}):(\d{2}):(\d{2})/); if (mm) return new Date(+mm[1], +mm[2] - 1, +mm[3], +mm[4], +mm[5], +mm[6]); } } }
+        return null;
+      }
+      if ((marker & 0xFF00) !== 0xFF00) break;
+      off += 2 + len;
+    }
+  } catch { }
+  return null;
+}
+function blobParaBase64(blob) { return new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = () => rej(r.error); r.readAsDataURL(blob); }); }
+let fotoModal = null;
+function abrirModalFoto(id) {
+  const f = fotosCache.find(x => x.id === id); if (!f) return; fotoModal = f;
+  $('#modal-img').src = urlsThumb.get(f.id); $('#modal-legenda').textContent = `${f.rotulo} · ${fmtDataHora(new Date(f.dataOriginal))}${f.lat ? ` · ${f.lat.toFixed(5)}, ${f.lng.toFixed(5)}` : ''}${f.enviada ? ' · enviada ✓' : ''}`;
+  $('#modal-foto').classList.add('ativa');
+}
+$('#modal-fechar').onclick = () => $('#modal-foto').classList.remove('ativa');
+$('#modal-excluir').onclick = async () => {
+  if (!fotoModal || !confirm('Excluir esta foto do celular?' + (fotoModal.enviada ? ' (ela já está no Drive e lá permanecerá)' : ''))) return;
+  await DB.del('fotos', fotoModal.id); fotosCache = fotosCache.filter(f => f.id !== fotoModal.id);
+  $('#modal-foto').classList.remove('ativa'); marcarAlterada();
+  $$('.fotogrupo').forEach(atualizarGrupo);
+};
+
+/* ====================== ASSINATURA ====================== */
+function iniciarAssinatura() {
+  const cv = $('#assinatura'); if (!cv) return;
+  const dpr = window.devicePixelRatio || 1; const rect = cv.getBoundingClientRect();
+  const largura = rect.width || cv.parentElement.clientWidth || 340;
+  cv.width = Math.round(largura * dpr); cv.height = Math.round(180 * dpr);
+  const cx = cv.getContext('2d'); cx.scale(dpr, dpr); cx.lineWidth = 2.2; cx.lineCap = 'round'; cx.lineJoin = 'round'; cx.strokeStyle = '#111';
+  cx.fillStyle = '#fff'; cx.fillRect(0, 0, largura, 180);
+  if (V.assinatura) { const img = new Image(); img.onload = () => cx.drawImage(img, 0, 0, largura, 180); img.src = V.assinatura; }
+  $('#ass-status').textContent = V.assinatura ? 'assinatura registrada ✓' : 'sem assinatura';
+  let desenhando = false, ultimo = null;
+  const pos = (e) => { const r = cv.getBoundingClientRect(); return { x: e.clientX - r.left, y: e.clientY - r.top }; };
+  cv.onpointerdown = (e) => { desenhando = true; ultimo = pos(e); cv.setPointerCapture(e.pointerId); e.preventDefault(); };
+  cv.onpointermove = (e) => { if (!desenhando) return; const p = pos(e); cx.beginPath(); cx.moveTo(ultimo.x, ultimo.y); cx.lineTo(p.x, p.y); cx.stroke(); ultimo = p; e.preventDefault(); };
+  const fim = () => { if (!desenhando) return; desenhando = false; if (!cv.width || !cv.height) return; V.assinatura = cv.toDataURL('image/png'); $('#ass-status').textContent = 'assinatura registrada ✓'; marcarAlterada(); };
+  cv.onpointerup = fim; cv.onpointercancel = fim; cv.onpointerleave = fim;
+}
+function limparAssinatura() { V.assinatura = null; marcarAlterada(); iniciarAssinatura(); }
+
+/* ====================== SINCRONIZAÇÃO (Google Apps Script) ====================== */
+async function api(acao, dados) {
+  const cfg = await getCfg();
+  if (!cfg.url || !cfg.chave) throw new Error('Configure a URL do script e a chave da equipe em ⚙ Configurações');
+  const ctrl = new AbortController(); const t = setTimeout(() => ctrl.abort(), 240000);
+  let r;
+  try { r = await fetch(cfg.url, { method: 'POST', body: JSON.stringify({ acao, chave: cfg.chave, ...dados }), headers: { 'Content-Type': 'text/plain;charset=utf-8' }, signal: ctrl.signal, redirect: 'follow' }); }
+  catch (e) { throw new Error(e.name === 'AbortError' ? 'tempo esgotado (conexão lenta)' : 'sem conexão com o servidor (' + e.message + ')'); }
+  finally { clearTimeout(t); }
+  const txt = await r.text(); let j;
+  try { j = JSON.parse(txt); } catch { throw new Error('resposta inválida do script (verifique a URL /exec e se a implantação está como "Qualquer pessoa")'); }
+  if (!j.ok) throw new Error(j.erro || 'erro desconhecido no script');
+  return j;
+}
+function vistoriaParaEnvio(v, fotos) {
+  const { assinatura, ...resto } = v;
+  return { ...resto, temAssinatura: !!assinatura, fotos: fotos.map(f => ({ id: f.id, grupo: f.grupo, categoria: f.categoria, rotulo: f.rotulo, estufaIndex: f.estufaId ? v.estufas.findIndex(e => e.id === f.estufaId) + 1 : null, seq: f.seq, dataOriginal: f.dataOriginal, lat: f.lat, lng: f.lng, origem: f.origem, nomeBase: f.nomeBase })) };
+}
+async function sincronizar(manual) {
+  if (sincronizando) return; if (!navigator.onLine) { if (manual) toast('Sem internet no momento'); return; }
+  const cfg = await getCfg(); if (!cfg.url) { if (manual) { toast('Configure a URL do script em ⚙'); abrirConfig(); } return; }
+  const pend = (await DB.all('vistorias')).filter(v => v.status === 'pronta' || v.status === 'erro');
+  if (!pend.length) { if (manual) toast('Nada pendente para enviar'); return; }
+  sincronizando = true; let okN = 0;
+  const setMsg = (m) => { sincronizar.msg = m; if (V && V.status === 'enviando') { renderRodape(); } if ($('#tela-lista').classList.contains('ativa')) atualizarStatusSync(pend); };
+  for (const v0 of pend) {
+    const v = (V && V.id === v0.id) ? V : v0;
+    v.status = 'enviando'; v.erro = ''; await DB.put('vistorias', v); if (V === v) renderRodape(); setMsg(v.produtor.nome);
+    try {
+      const fotos = await DB.fotosDe(v.id);
+      const dados = vistoriaParaEnvio(v, fotos);
+      setMsg(`${v.produtor.nome}: dados…`);
+      const r1 = await api('upsert', { vistoria: dados });
+      v.pastaDriveUrl = r1.pastaUrl || v.pastaDriveUrl;
+      const pendFotos = fotos.filter(f => !f.enviada);
+      for (let i = 0; i < pendFotos.length; i++) {
+        const f = pendFotos[i]; setMsg(`${v.produtor.nome}: foto ${i + 1}/${pendFotos.length}`);
+        const el = $('#v-prog'); if (el) el.style.width = `${Math.round((i / pendFotos.length) * 100)}%`;
+        const meta = dados.fotos.find(x => x.id === f.id);
+        await api('foto', { vistoriaId: v.id, foto: meta, base64: (await blobParaBase64(f.blob)).split(',')[1] });
+        f.enviada = true; await DB.put('fotos', f);
+        if (V === v) { const c = fotosCache.find(x => x.id === f.id); if (c) c.enviada = true; }
+      }
+      setMsg(`${v.produtor.nome}: gerando ficha…`);
+      const r3 = await api('finalizar', { vistoria: dados, assinaturaBase64: v.assinatura ? v.assinatura.split(',')[1] : null });
+      v.status = 'enviada'; v.enviadaEm = new Date().toISOString(); v.fichaUrl = r3.fichaUrl || ''; v.pastaDriveUrl = r3.pastaUrl || v.pastaDriveUrl; okN++;
+    } catch (e) { v.status = 'erro'; v.erro = e.message; console.error(e); }
+    await DB.put('vistorias', v);
+    if (V === v) renderVistoria();
+  }
+  sincronizando = false; sincronizar.msg = '';
+  if ($('#tela-lista').classList.contains('ativa')) renderLista(); else if (V) renderRodape();
+  toast(okN === pend.length ? `${okN} vistoria(s) enviada(s) com sucesso ✓` : `${okN} de ${pend.length} enviada(s). Verifique os erros na lista.`, 4000);
+}
+
+/* ====================== INICIALIZAÇÃO ====================== */
+(async function init() {
+  $('#versao').textContent = APP_VERSAO;
+  try { if (navigator.storage && navigator.storage.persist) await navigator.storage.persist(); } catch { }
+  if ('serviceWorker' in navigator && location.protocol.startsWith('http')) { navigator.serviceWorker.register('./sw.js').catch(e => console.warn('SW', e)); }
+  await renderLista();
+  if (navigator.onLine) setTimeout(() => sincronizar(false), 1500);
+  setInterval(() => { if (navigator.onLine && !sincronizando) sincronizar(false); }, 5 * 60 * 1000);
+})();
+</script>
+</body>
+</html>
