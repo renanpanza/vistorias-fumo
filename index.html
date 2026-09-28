@@ -98,6 +98,12 @@ main{padding:12px 12px 0;max-width:760px;margin:0 auto}
 .modal .acoes .btn{background:#222;color:#fff;border-color:#444}
 .toast{position:fixed;left:50%;transform:translateX(-50%);bottom:90px;background:#222;color:#fff;padding:10px 16px;border-radius:12px;font-size:14px;z-index:200;opacity:0;transition:opacity .2s;pointer-events:none;max-width:90vw;text-align:center}
 .toast.on{opacity:1}
+.busca-res{border:1px solid var(--line);border-radius:10px;background:var(--card);margin-top:4px;overflow:hidden;display:none}
+.busca-res.on{display:block}
+.busca-res .item{padding:10px 12px;border-bottom:1px solid var(--line);cursor:pointer}
+.busca-res .item:last-child{border-bottom:0}
+.busca-res .item b{display:block}
+.busca-res .item small{color:var(--mut)}
 .gps{font-size:13px;color:var(--mut);display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 .vazio{text-align:center;color:var(--mut);padding:40px 12px}
 .pill{font-size:12px;background:var(--badge-rasc);border-radius:999px;padding:2px 8px}
@@ -184,7 +190,7 @@ kbd{background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:
 
 <script>
 'use strict';
-const APP_VERSAO = '1.0.0';
+const APP_VERSAO = '1.1.0';
 
 /* ====================== DEFINIÇÕES (espelham a ficha em papel) ====================== */
 const ESTADO_CIVIL = ['', 'Solteiro(a)', 'Casado(a)', 'União estável', 'Divorciado(a)', 'Separado(a)', 'Viúvo(a)'];
@@ -275,7 +281,7 @@ function novaVistoria(vistoriador) {
   const agora = new Date().toISOString();
   return {
     id: uuid(), versaoApp: APP_VERSAO, criadoEm: agora, atualizadoEm: agora, status: 'rascunho', vistoriador: vistoriador || '',
-    produtor: { dataVisita: hojeISO(), nome: '', cpf: '', rg: '', conjuge: '', estadoCivil: '', municipio: '', uf: 'PR', localidade: '', whatsapp: '', integradora: '', contratoIntegracao: '', notaProdutor: '', uc: '', titularConta: '', ucCedida: '', fontesReserva: [] },
+    produtor: { dataVisita: hojeISO(), nome: '', cpf: '', rg: '', conjuge: '', conjugeCpf: '', conjugeRg: '', estadoCivil: '', municipio: '', uf: 'PR', localidade: '', whatsapp: '', integradora: '', contratoIntegracao: '', notaProdutor: '', uc: '', titularConta: '', ucCedida: '', fontesReserva: [] },
     safra: { estimativaPes: '', estimativaKg: '', totalEstufas: '', estufasAfetadas: '' },
     eventos: [novoEvento()], protocolos: [novoProtocolo()], clima: '', tempoTotalSemEnergia: '', tempoTotalMinutos: null,
     estufas: [novaEstufa()],
@@ -343,7 +349,7 @@ $('#cfg-salvar').onclick = async () => { await setCfg({ vistoriador: $('#cfg-vis
 $('#cfg-testar').onclick = async () => {
   await $('#cfg-salvar').onclick();
   const r = $('#cfg-resultado'); r.textContent = 'Testando…';
-  try { const j = await api('ping', {}); r.innerHTML = `<span class="ok">✓ Conectado. Planilha: ${esc(j.planilha || '')} · Pasta raiz: ${esc(j.pasta || '')} · Script v${esc(j.versao || '')}</span>`; }
+  try { const j = await api('ping', {}); const okC = await atualizarClientes(false); r.innerHTML = `<span class="ok">✓ Conectado. Planilha: ${esc(j.planilha || '')} · Pasta raiz: ${esc(j.pasta || '')} · Script v${esc(j.versao || '')} · Clientes: ${okC ? CLIENTES.length : 'não carregados'}</span>`; }
   catch (e) { r.innerHTML = `<span class="erro">✗ ${esc(e.message)}</span>`; }
 };
 $('#cfg-atualizar').onclick = async () => { const reg = await navigator.serviceWorker?.getRegistration(); if (reg) { await reg.update(); toast('Verificado. Se houver nova versão, feche e reabra o app.'); } else toast('Sem service worker (abra pelo endereço https)'); };
@@ -456,6 +462,7 @@ function renderVistoria() {
 
   <details class="secao" open><summary><span class="num">1</span>Identificação do produtor e da UC<span class="seta">›</span></summary><div class="corpo">
     <div class="gps" id="gps-box"></div>
+    <div class="campo"><label>🔍 Buscar cliente cadastrado</label><input type="search" id="busca-cliente" placeholder="nome, CPF ou localidade…" autocomplete="off"><div class="busca-res" id="busca-res"></div><span class="hint" id="clientes-info"></span></div>
     <div class="linha2">
       ${campo('Data da visita', p + 'dataVisita', { type: 'date' })}
       ${campo('Vistoriador', 'vistoriador')}
@@ -463,6 +470,7 @@ function renderVistoria() {
     ${campo('Nome do produtor', p + 'nome', { placeholder: 'nome completo' })}
     <div class="linha2">${campo('CPF', p + 'cpf', { type: 'tel', mask: 'cpf', inputmode: 'numeric' })}${campo('RG', p + 'rg')}</div>
     <div class="linha2">${campo('Cônjuge', p + 'conjuge')}${campo('Estado civil', p + 'estadoCivil', { type: 'select', opcoes: ESTADO_CIVIL })}</div>
+    <div class="linha2">${campo('CPF do cônjuge', p + 'conjugeCpf', { type: 'tel', mask: 'cpf', inputmode: 'numeric' })}${campo('RG do cônjuge', p + 'conjugeRg')}</div>
     <div class="linha2">${campo('Município', p + 'municipio', { list: 'lst-municipios' })}${campo('UF', p + 'uf', { type: 'select', opcoes: UFS })}</div>
     ${campo('Localidade / propriedade', p + 'localidade')}
     <div class="linha2">${campo('WhatsApp', p + 'whatsapp', { type: 'tel', mask: 'fone', inputmode: 'numeric' })}${campo('Empresa integradora / fumageira', p + 'integradora')}</div>
@@ -521,6 +529,7 @@ function renderVistoria() {
   recalcularTempo();
   renderGPS();
   iniciarAssinatura();
+  ligarBuscaCliente();
 }
 function renderRodape() {
   const r = $('#v-rodape');
@@ -593,6 +602,50 @@ function ligarEventosForm() {
 }
 function rerenderEstufas() { $('#estufas').innerHTML = V.estufas.map(estufaHtml).join(''); }
 function rerenderEventos() { $('#eventos').innerHTML = V.eventos.map(eventoHtml).join(''); recalcularTempo(); }
+
+/* ====================== CLIENTES CADASTRADOS (aba "Clientes" da planilha) ====================== */
+let CLIENTES = [], CLIENTES_EM = null;
+const normTxt = (s) => String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase();
+async function carregarClientesLocal() { const c = await DB.get('config', 'clientes'); if (c) { CLIENTES = c.v.lista || []; CLIENTES_EM = c.v.em || null; } }
+async function atualizarClientes(manual) {
+  if (!navigator.onLine) { if (manual) toast('Sem internet para atualizar a lista'); return false; }
+  try {
+    const j = await api('clientes', {});
+    CLIENTES = j.clientes || []; CLIENTES_EM = new Date().toISOString();
+    await DB.put('config', { k: 'clientes', v: { lista: CLIENTES, em: CLIENTES_EM } });
+    infoClientes(); if (manual) toast(`Lista atualizada: ${CLIENTES.length} clientes`);
+    return true;
+  } catch (e) { if (manual) toast('Falha ao baixar a lista: ' + e.message, 4000); return false; }
+}
+function infoClientes() {
+  const el = $('#clientes-info'); if (!el) return;
+  el.innerHTML = CLIENTES.length ? `${CLIENTES.length} clientes na lista (atualizada em ${fmtDataHora(new Date(CLIENTES_EM))}) · <a href="#" id="clientes-atualizar">atualizar</a>` : `Nenhum cliente carregado. <a href="#" id="clientes-atualizar">Baixar lista</a> (precisa de internet e da aba "Clientes" na planilha).`;
+  $('#clientes-atualizar').onclick = (e) => { e.preventDefault(); atualizarClientes(true); };
+}
+function ligarBuscaCliente() {
+  const inp = $('#busca-cliente'), res = $('#busca-res'); if (!inp) return;
+  infoClientes();
+  inp.oninput = () => {
+    const q = normTxt(inp.value).trim(); const qd = q.replace(/\D/g, '');
+    if (q.length < 2) { res.classList.remove('on'); res.innerHTML = ''; return; }
+    const achados = CLIENTES.filter(c => normTxt(c.nome).includes(q) || normTxt(c.conjuge).includes(q) || normTxt(c.localidade).includes(q) || (qd.length >= 3 && (String(c.cpf || '').replace(/\D/g, '').includes(qd) || String(c.conjugeCpf || '').replace(/\D/g, '').includes(qd)))).slice(0, 8);
+    res.innerHTML = achados.length ? achados.map((c, i) => `<div class="item" data-i="${CLIENTES.indexOf(c)}"><b>${esc(c.nome)}</b><small>${esc([c.cpf ? 'CPF ' + c.cpf : 'sem CPF', c.conjuge ? 'cônjuge: ' + c.conjuge : '', [c.localidade, c.municipio].filter(Boolean).join(' — ')].filter(Boolean).join(' · '))}</small></div>`).join('') : '<div class="item"><small>Nenhum cliente encontrado — preencha manualmente.</small></div>';
+    res.classList.add('on');
+  };
+  res.onclick = (ev) => { const it = ev.target.closest('.item[data-i]'); if (!it) return; aplicarCliente(CLIENTES[+it.dataset.i]); };
+}
+function aplicarCliente(c) {
+  if (!c || !V) return;
+  const p = V.produtor;
+  p.nome = c.nome || p.nome; p.cpf = c.cpf || p.cpf; p.rg = c.rg || p.rg;
+  p.conjuge = c.conjuge || p.conjuge; p.conjugeCpf = c.conjugeCpf || p.conjugeCpf; p.conjugeRg = c.conjugeRg || p.conjugeRg;
+  if (c.estadoCivil && ESTADO_CIVIL.includes(c.estadoCivil)) p.estadoCivil = c.estadoCivil;
+  p.localidade = c.localidade || p.localidade; p.municipio = c.municipio || p.municipio; if (c.uf) p.uf = c.uf;
+  V.clienteCadastrado = c.nome;
+  marcarAlterada(); renderVistoria();
+  toast(`Dados de ${c.nome} preenchidos — confira e complete o restante`, 3500);
+  if (c.obs) setTimeout(() => toast('Observação do cadastro: ' + c.obs, 6000), 3600);
+}
 
 /* ====================== GPS ====================== */
 function iniciarGPS() {
@@ -738,6 +791,7 @@ function vistoriaParaEnvio(v, fotos) {
 async function sincronizar(manual) {
   if (sincronizando) return; if (!navigator.onLine) { if (manual) toast('Sem internet no momento'); return; }
   const cfg = await getCfg(); if (!cfg.url) { if (manual) { toast('Configure a URL do script em ⚙'); abrirConfig(); } return; }
+  atualizarClientes(false);
   const pend = (await DB.all('vistorias')).filter(v => v.status === 'pronta' || v.status === 'erro');
   if (!pend.length) { if (manual) toast('Nada pendente para enviar'); return; }
   sincronizando = true; let okN = 0;
@@ -777,8 +831,9 @@ async function sincronizar(manual) {
   $('#versao').textContent = APP_VERSAO;
   try { if (navigator.storage && navigator.storage.persist) await navigator.storage.persist(); } catch { }
   if ('serviceWorker' in navigator && location.protocol.startsWith('http')) { navigator.serviceWorker.register('./sw.js').catch(e => console.warn('SW', e)); }
+  await carregarClientesLocal();
   await renderLista();
-  if (navigator.onLine) setTimeout(() => sincronizar(false), 1500);
+  if (navigator.onLine) setTimeout(async () => { const cfg = await getCfg(); if (cfg.url) { atualizarClientes(false); sincronizar(false); } }, 1500);
   setInterval(() => { if (navigator.onLine && !sincronizando) sincronizar(false); }, 5 * 60 * 1000);
 })();
 </script>

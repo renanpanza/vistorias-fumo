@@ -1,5 +1,5 @@
 /* Service worker — mantém o app disponível offline */
-const VERSAO = 'vistorias-fumo-v1.0.0';
+const VERSAO = 'vistorias-fumo-v1.1.0';
 const ARQUIVOS = ['./', './index.html', './manifest.webmanifest', './icon-192.png', './icon-512.png'];
 
 self.addEventListener('install', (ev) => {
