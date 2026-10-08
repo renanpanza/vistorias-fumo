@@ -90,7 +90,7 @@ main{padding:12px 12px 0;max-width:760px;margin:0 auto}
 .status-sync b{color:var(--txt)}
 .pt{display:inline-block;width:9px;height:9px;border-radius:999px;background:#999;margin-right:5px}
 .pt.on{background:var(--ok)} .pt.off{background:var(--err)}
-#assinatura{width:100%;height:180px;border:1px solid var(--line);border-radius:12px;background:#fff;touch-action:none;display:block}
+.canvas-ass{width:100%;height:180px;border:1px solid var(--line);border-radius:12px;background:#fff;touch-action:none;display:block}
 .modal{position:fixed;inset:0;background:rgba(0,0,0,.9);z-index:100;display:none;flex-direction:column;align-items:center;justify-content:center;padding:12px}
 .modal.ativa{display:flex}
 .modal img{max-width:100%;max-height:75vh;border-radius:8px}
@@ -190,38 +190,36 @@ kbd{background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:
 
 <script>
 'use strict';
-const APP_VERSAO = '1.1.0';
+const APP_VERSAO = '1.2.0';
 
 /* ====================== DEFINIÇÕES (espelham a ficha em papel) ====================== */
 const ESTADO_CIVIL = ['', 'Solteiro(a)', 'Casado(a)', 'União estável', 'Divorciado(a)', 'Separado(a)', 'Viúvo(a)'];
 const UFS = ['PR','SC','RS','SP','MG','MS','MT','GO','BA','AL','SE','PB','PE','RN','CE','PI','MA','TO','PA','AM','AC','RO','RR','AP','ES','RJ','DF'];
 const FONTES_RESERVA = [['gerador','Gerador próprio'],['solar','Energia solar com backup'],['nenhum','Nenhum']];
 const CAT_ESTUFA = [['externa','Estufa externa'],['interior','Interior'],['carregamento','Carregamento'],['descartado','Material descartado'],['aproveitado','Fumo aproveitado']];
-const CAT_GERAL = [['externa','Estufa por fora'],['interior','Interior / sistema de secagem'],['carregamento','Carregamento / fumo em cura'],['sem-energia','Estufa sem energia (foto/vídeo datado)'],['descartado','Material descartado'],['termometro','Termômetro / painel'],['padrao-luz','Padrão de luz da estufa (c/ número visível)']];
+const CAT_GERAL = [['externa','Estufa por fora'],['interior','Interior / sistema de secagem'],['carregamento','Carregamento / fumo em cura'],['sem-energia','Estufa sem energia (foto/vídeo datado)'],['descartado','Material descartado'],['termometro','Termômetro / painel'],['padrao-luz','Padrão de luz da estufa (c/ número visível)'],['com-tecnica','Foto com a técnica']];
+const CLASSES_FUMO = ['BO1','BO2','BO3','BR1','BR2','BR3','BL1','BL2','BK','TO1','TO2','TO3','TR1','TR2','TR3','TL1','TL2','TK','CO1','CO2','CO3','CR1','CR2','CR3','CL1','CL2','CK','X01','X02','X03','XR1','XR2','XR3','XL1','XL2','XK','G2','G3','N','SC','ST'];
 const DOCS = [['rg','RG'],['cpf','CPF'],['certidao-casamento','Certidão de casamento'],['comprovante-residencia','Comprovante de residência atual'],['nota-produtor','Nota de produtor / nota de fumo'],['declaracao-luz-cedida','Declaração de luz cedida'],['contrato-integracao','Contrato de integração'],['conta-energia','Conta de energia / identificação da UC'],['protocolo-copel','Protocolo(s) COPEL'],['fotos-videos-produtor','Fotos / vídeos feitos pelo produtor']];
 const CAMPOS_ESTUFA = [
   ['modelo','Modelo / tipo','ex.: Carijó, convencional','text','lst-modelos'],
   ['fonteEnergia','Fonte de energia','elétrica / lenha / GLP','text','lst-fontes'],
   ['metragem','Metragem / dimensões','medidas em metros — anexar foto contemporânea da estufa','text'],
   ['capacidadeTotal','Capacidade total','nº de estaleiros / grades da estufa','text'],
-  ['gradesCarregadas','Grades carregadas no evento','quantas estavam efetivamente carregadas','text'],
-  ['capacidadeMediaGrade','Capacidade média por grade (kg)','e relação com a classe do fumo em secagem','text'],
+  ['gradesCarregadas','Grades carregadas no evento','quantas estavam efetivamente carregadas','number'],
   ['dataCarregamento','Data do carregamento','','date'],
-  ['quantidadeCarregadaKg','Quantidade carregada (kg)','','number'],
-  ['quantidadePes','Quantidade (pés)','','number'],
-  ['classeEstimada','Classe estimada do fumo','à época do evento','text'],
+  ['quantidadeCarregadaKg','Quantidade carregada (kg)','total de fumo que estava sendo secado na estufa','number'],
+  ['capacidadeMediaGrade','Peso médio por grade (kg)','calculado: kg carregados ÷ grades carregadas','calc'],
+  ['classeEstimada','Classe estimada do fumo','à época do evento','text','lst-classes'],
   ['estagioCura','Estágio da cura no momento da queda','ex.: secagem da folha / fixação de cor / secagem do talo — o impacto varia conforme a fase','text','lst-estagios'],
-  ['temperaturaQueda','Temperatura aferida no momento da queda (°C)','','number'],
+  ['temperaturaQueda','Temperatura aferida no momento da queda (°F)','','number'],
   ['religamento','Religamento da estufa','data e hora do religamento, temperatura adotada e por quanto tempo a cura continuou após o retorno da energia','textarea'],
   ['providencias','Providências adotadas pelo produtor','o que foi feito para preservar a qualidade do produto','textarea'],
   ['perdaTotalPct','Perda total (%)','','number'],
-  ['perdaTotalKg','Perda total (kg)','','number'],
+  ['perdaTotalKg','Perda total (kg)','calculado: % de perda sobre os kg carregados','calc'],
   ['desclassPct','Desclassificação (%)','','number'],
-  ['desclassKg','Desclassificação (kg)','','number'],
-  ['desclassDe','Desclassificação — classe DE','','text'],
-  ['desclassPara','Desclassificação — classe PARA','','text'],
-  ['pesoDescartado','Peso do fumo descartado (kg)','','number'],
-  ['pesoAproveitado','Peso do fumo aproveitado (kg)','','number'],
+  ['desclassKg','Desclassificação (kg)','calculado: % de desclassificação sobre os kg carregados','calc'],
+  ['desclassDe','Desclassificação — classe DE','','text','lst-classes'],
+  ['desclassPara','Desclassificação — classe PARA','','text','lst-classes'],
 ];
 
 /* ====================== UTILIDADES ====================== */
@@ -234,6 +232,17 @@ const fmtData = (iso) => { if (!iso) return ''; const [a, m, d] = iso.split('-')
 const fmtDataHora = (d) => `${pad(d.getDate())}/${pad(d.getMonth()+1)}/${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
 const hojeISO = () => { const d = new Date(); return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`; };
 const carimboArquivo = (d) => `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}_${pad(d.getHours())}h${pad(d.getMinutes())}${pad(d.getSeconds())}`;
+const numVal = (x) => { if (x === '' || x == null) return null; const n = Number(String(x).replace(',', '.')); return isNaN(n) ? null : n; };
+const r2 = (n) => Math.round(n * 100) / 100;
+const fmtNum = (n) => (n === '' || n == null) ? '' : Number(n).toLocaleString('pt-BR', { maximumFractionDigits: 2 });
+function recalcularEstufa(i) {
+  const e = V && V.estufas[i]; if (!e) return;
+  const kg = numVal(e.quantidadeCarregadaKg), gr = numVal(e.gradesCarregadas), pp = numVal(e.perdaTotalPct), dp = numVal(e.desclassPct);
+  e.capacidadeMediaGrade = (kg != null && gr) ? r2(kg / gr) : '';
+  e.perdaTotalKg = (kg != null && pp != null) ? r2(kg * pp / 100) : '';
+  e.desclassKg = (kg != null && dp != null) ? r2(kg * dp / 100) : '';
+  ['capacidadeMediaGrade', 'perdaTotalKg', 'desclassKg'].forEach(k => { const el = $(`[data-calc="estufas.${i}.${k}"]`); if (el) el.innerHTML = e[k] === '' ? '—' : `<b>${fmtNum(e[k])}</b> kg`; });
+}
 function toast(msg, ms = 2500) { const t = $('#toast'); t.textContent = msg; t.classList.add('on'); clearTimeout(toast._t); toast._t = setTimeout(() => t.classList.remove('on'), ms); }
 function getPath(obj, path) { return path.split('.').reduce((o, k) => (o == null ? undefined : o[k]), obj); }
 function setPath(obj, path, val) { const ks = path.split('.'); let o = obj; for (let i = 0; i < ks.length - 1; i++) { if (o[ks[i]] == null) o[ks[i]] = /^\d+$/.test(ks[i+1]) ? [] : {}; o = o[ks[i]]; } o[ks[ks.length-1]] = val; }
@@ -287,7 +296,7 @@ function novaVistoria(vistoriador) {
     estufas: [novaEstufa()],
     fotosGerais: { checks: [], dataImagens: '' },
     documentos: { coletados: [] },
-    observacoes: '', assinatura: null, gps: null,
+    observacoes: '', assinatura: null, assinaturaConjuge: null, gps: null,
     enviadaEm: null, pastaDriveUrl: '', fichaUrl: '', erro: ''
   };
 }
@@ -323,7 +332,7 @@ async function renderLista() {
         <div class="meta">${esc([v.produtor.municipio, fmtData(v.produtor.dataVisita)].filter(Boolean).join(' · '))} · ${v.estufas.length} estufa(s) · ${cont[v.id] || 0} foto(s)${v.vistoriador ? ' · ' + esc(v.vistoriador) : ''}</div>
         ${v.status === 'erro' && v.erro ? `<div class="meta erro">${esc(v.erro)}</div>` : ''}
       </div>
-      <span class="badge st-${v.status}">${rotuloStatus[v.status]}</span>
+      <span class="badge st-${v.status}">${v.status === 'enviando' ? `Enviando ${sincronizar.pct || 0}%` : rotuloStatus[v.status]}</span>
     </div>`).join('');
   $$('.card.lista', el).forEach(c => c.onclick = () => abrirVistoria(c.dataset.id));
   atualizarStatusSync(vs);
@@ -331,7 +340,7 @@ async function renderLista() {
 function atualizarStatusSync(vs) {
   const pend = (vs || []).filter(v => v.status === 'pronta' || v.status === 'erro').length;
   const on = navigator.onLine;
-  $('#status-sync').innerHTML = `<span class="pt ${on ? 'on' : 'off'}"></span>${on ? 'Online' : 'Sem internet'} — <b>${pend}</b> pendente(s)${!on && pend ? '<br>envio automático quando houver sinal' : ''}${sincronizando ? '<br><b>Enviando…</b> ' + (sincronizar.msg || '') : ''}`;
+  $('#status-sync').innerHTML = `<span class="pt ${on ? 'on' : 'off'}"></span>${on ? 'Online' : 'Sem internet'} — <b>${pend}</b> pendente(s)${!on && pend ? '<br>envio automático quando houver sinal' : ''}${sincronizando ? `<br><b>Enviando ${sincronizar.pct || 0}%</b> — ${esc(sincronizar.msg || '')}` : ''}`;
   $('#btn-sync').disabled = !on || sincronizando || !pend;
 }
 window.addEventListener('online', () => { renderLista(); sincronizar(false); });
@@ -390,7 +399,8 @@ function campo(label, path, opts = {}) {
   const type = opts.type || 'text';
   const hint = opts.hint ? `<span class="hint">${esc(opts.hint)}</span>` : '';
   let inp;
-  if (type === 'textarea') inp = `<textarea data-path="${path}" placeholder="${esc(opts.placeholder || '')}">${esc(val)}</textarea>`;
+  if (type === 'calc') inp = `<div class="calc" data-calc="${path}">${val === '' || val == null ? '—' : `<b>${fmtNum(val)}</b> kg`}</div>`;
+  else if (type === 'textarea') inp = `<textarea data-path="${path}" placeholder="${esc(opts.placeholder || '')}">${esc(val)}</textarea>`;
   else if (type === 'select') inp = `<select data-path="${path}">${opts.opcoes.map(o => `<option value="${esc(o)}" ${o === val ? 'selected' : ''}>${esc(o) || '—'}</option>`).join('')}</select>`;
   else inp = `<input type="${type}" data-path="${path}" value="${esc(val)}" ${opts.list ? `list="${opts.list}"` : ''} ${opts.inputmode ? `inputmode="${opts.inputmode}"` : ''} ${opts.mask ? `data-mask="${opts.mask}"` : ''} ${type === 'number' ? 'step="any"' : ''} placeholder="${esc(opts.placeholder || '')}">`;
   return `<div class="campo"><label>${esc(label)}</label>${inp}${hint}</div>`;
@@ -454,6 +464,7 @@ function renderVistoria() {
   $('#v-form').innerHTML = `
   <datalist id="lst-modelos"><option value="Carijó"><option value="Convencional"><option value="Estufa elétrica de ar forçado"><option value="Estufa a lenha"><option value="Estufa loose leaf"></datalist>
   <datalist id="lst-fontes"><option value="Elétrica"><option value="Lenha"><option value="GLP"><option value="Elétrica + lenha"><option value="Elétrica + GLP"></datalist>
+  <datalist id="lst-classes">${CLASSES_FUMO.map(c => `<option value="${c}">`).join('')}</datalist>
   <datalist id="lst-estagios"><option value="Murcha / amarelecimento"><option value="Fixação de cor"><option value="Secagem da folha (lâmina)"><option value="Secagem do talo"></datalist>
   <datalist id="lst-municipios"><option value="Rio Azul"><option value="Irati"><option value="Rebouças"><option value="Imbituva"><option value="Prudentópolis"><option value="Ipiranga"><option value="Ivaí"><option value="Mallet"><option value="São Mateus do Sul"><option value="Inácio Martins"><option value="Guamiranga"><option value="Fernandes Pinheiro"><option value="Teixeira Soares"><option value="Cruz Machado"><option value="Paulo Frontin"></datalist>
 
@@ -519,23 +530,28 @@ function renderVistoria() {
 
   <details class="secao" open><summary><span class="num">✍</span>Assinatura do produtor<span class="seta">›</span></summary><div class="corpo">
     <div class="dica">Peça ao produtor para assinar com o dedo. Declaração: “Confirmo que as informações prestadas nesta vistoria são verdadeiras.”</div>
-    <canvas id="assinatura"></canvas>
+    <canvas id="assinatura" class="canvas-ass"></canvas>
     <div style="display:flex;gap:8px;margin-top:8px"><button class="btn peq" id="ass-limpar" type="button">Limpar assinatura</button><span class="dica" id="ass-status" style="margin:auto 0"></span></div>
+    <div class="campo" style="margin-top:18px"><label>Assinatura do cônjuge</label><span class="hint">quando o produtor for casado ou viver em união estável${V.produtor.conjuge ? ' — cônjuge: ' + esc(V.produtor.conjuge) : ''}</span></div>
+    <canvas id="assinatura-conjuge" class="canvas-ass"></canvas>
+    <div style="display:flex;gap:8px;margin-top:8px"><button class="btn peq" id="ass-conjuge-limpar" type="button">Limpar assinatura</button><span class="dica" id="ass-conjuge-status" style="margin:auto 0"></span></div>
   </div></details>`;
 
   $('#v-titulo').firstChild.textContent = (V.produtor.nome || 'Vistoria') + ' ';
   renderRodape();
   ligarEventosForm();
   recalcularTempo();
+  V.estufas.forEach((e, i) => recalcularEstufa(i));
   renderGPS();
-  iniciarAssinatura();
+  iniciarAssinatura('assinatura', 'assinatura', 'ass-status');
+  iniciarAssinatura('assinatura-conjuge', 'assinaturaConjuge', 'ass-conjuge-status');
   ligarBuscaCliente();
 }
 function renderRodape() {
   const r = $('#v-rodape');
   if (V.status === 'rascunho') r.innerHTML = `<button class="btn perigo peq" id="v-excluir" type="button">Excluir</button><button class="btn pri" style="flex:1" id="v-concluir" type="button">✔ Concluir e enviar</button>`;
   else if (V.status === 'pronta' || V.status === 'erro') r.innerHTML = `<button class="btn peq" id="v-reabrir" type="button">Voltar a rascunho</button><button class="btn acc" style="flex:1" id="v-enviar" type="button">${navigator.onLine ? '⇧ Enviar agora' : 'Aguardando internet…'}</button>`;
-  else if (V.status === 'enviando') r.innerHTML = `<div class="status-sync"><b>Enviando…</b> ${esc(sincronizar.msg || '')}<div class="progresso"><div id="v-prog"></div></div></div>`;
+  else if (V.status === 'enviando') r.innerHTML = `<div class="status-sync"><b>Enviando ${sincronizar.pct || 0}%</b> — ${esc(sincronizar.msg || '')}<div class="progresso"><div id="v-prog" style="width:${sincronizar.pct || 0}%"></div></div></div>`;
   else r.innerHTML = `<span class="status-sync ok" style="flex:1">✓ Enviada</span><button class="btn peq" id="v-reenviar" type="button">Reenviar (atualizar)</button>`;
   $('#v-excluir')?.addEventListener('click', excluirVistoria);
   $('#v-concluir')?.addEventListener('click', concluirVistoria);
@@ -556,6 +572,7 @@ async function concluirVistoria() {
   if (faltas.length) { toast('Falta: ' + faltas.join(', '), 4000); $('details.secao').open = true; return; }
   const avisos = [];
   if (!V.assinatura) avisos.push('sem assinatura do produtor');
+  if ((V.produtor.conjuge || /Casad|União/.test(V.produtor.estadoCivil || '')) && !V.assinaturaConjuge) avisos.push('sem assinatura do cônjuge');
   if (!fotosCache.length) avisos.push('nenhuma foto registrada');
   if (V.eventos.some(e => (duracaoEvento(e) ?? 0) < 0)) avisos.push('há evento com retorno antes do início');
   if (avisos.length && !confirm('Atenção: ' + avisos.join('; ') + '.\n\nConcluir mesmo assim?')) return;
@@ -578,6 +595,7 @@ function ligarEventosForm() {
     } else if (el.dataset.tipo === 'radio') { setPath(V, path, el.value); form.querySelectorAll(`input[data-path="${path}"]`).forEach(i => i.closest('.chk').classList.toggle('on', i.checked)); }
     else setPath(V, path, el.type === 'number' ? el.value : el.value);
     if (path.startsWith('eventos.')) recalcularTempo();
+    const me = path.match(/^estufas\.(\d+)\./); if (me) recalcularEstufa(+me[1]);
     if (path === 'produtor.nome') $('#v-titulo').firstChild.textContent = (V.produtor.nome || 'Vistoria') + ' ';
     if (path.startsWith('estufas.') && path.endsWith('.modelo')) { const d = el.closest('details'); const pill = d && d.querySelector('.pill'); if (pill) pill.textContent = el.value; }
     marcarAlterada();
@@ -590,7 +608,8 @@ function ligarEventosForm() {
     else if (b.id === 'add-evento') { V.eventos.push(novoEvento()); marcarAlterada(); rerenderEventos(); }
     else if (b.classList.contains('rm-evento')) { V.eventos = V.eventos.filter(x => x.id !== b.dataset.id); marcarAlterada(); rerenderEventos(); }
     else if (b.id === 'add-protocolo') { V.protocolos.push(novoProtocolo()); marcarAlterada(); $('#protocolos').innerHTML = V.protocolos.map((pr, i) => `<div class="linha2">${campo('Protocolo nº', `protocolos.${i}.numero`)}${campo('Data', `protocolos.${i}.data`, { type: 'date' })}</div>`).join(''); }
-    else if (b.id === 'ass-limpar') { limparAssinatura(); }
+    else if (b.id === 'ass-limpar') { limparAssinatura('assinatura'); }
+    else if (b.id === 'ass-conjuge-limpar') { limparAssinatura('assinaturaConjuge'); }
     else if (b.id === 'gps-atualizar') { capturarGPS(true); }
     else if (b.classList.contains('btn-cam') || b.classList.contains('btn-gal')) {
       const g = b.closest('.fotogrupo');
@@ -600,7 +619,7 @@ function ligarEventosForm() {
     else if (b.dataset.foto) abrirModalFoto(b.dataset.foto);
   };
 }
-function rerenderEstufas() { $('#estufas').innerHTML = V.estufas.map(estufaHtml).join(''); }
+function rerenderEstufas() { $('#estufas').innerHTML = V.estufas.map(estufaHtml).join(''); V.estufas.forEach((e, i) => recalcularEstufa(i)); }
 function rerenderEventos() { $('#eventos').innerHTML = V.eventos.map(eventoHtml).join(''); recalcularTempo(); }
 
 /* ====================== CLIENTES CADASTRADOS (aba "Clientes" da planilha) ====================== */
@@ -752,23 +771,23 @@ $('#modal-excluir').onclick = async () => {
 };
 
 /* ====================== ASSINATURA ====================== */
-function iniciarAssinatura() {
-  const cv = $('#assinatura'); if (!cv) return;
+function iniciarAssinatura(cvId, chave, statusId) {
+  const cv = $('#' + cvId); if (!cv) return;
   const dpr = window.devicePixelRatio || 1; const rect = cv.getBoundingClientRect();
   const largura = rect.width || cv.parentElement.clientWidth || 340;
   cv.width = Math.round(largura * dpr); cv.height = Math.round(180 * dpr);
   const cx = cv.getContext('2d'); cx.scale(dpr, dpr); cx.lineWidth = 2.2; cx.lineCap = 'round'; cx.lineJoin = 'round'; cx.strokeStyle = '#111';
   cx.fillStyle = '#fff'; cx.fillRect(0, 0, largura, 180);
-  if (V.assinatura) { const img = new Image(); img.onload = () => cx.drawImage(img, 0, 0, largura, 180); img.src = V.assinatura; }
-  $('#ass-status').textContent = V.assinatura ? 'assinatura registrada ✓' : 'sem assinatura';
+  if (V[chave]) { const img = new Image(); img.onload = () => cx.drawImage(img, 0, 0, largura, 180); img.src = V[chave]; }
+  const st = $('#' + statusId); if (st) st.textContent = V[chave] ? 'assinatura registrada ✓' : 'sem assinatura';
   let desenhando = false, ultimo = null;
   const pos = (e) => { const r = cv.getBoundingClientRect(); return { x: e.clientX - r.left, y: e.clientY - r.top }; };
   cv.onpointerdown = (e) => { desenhando = true; ultimo = pos(e); cv.setPointerCapture(e.pointerId); e.preventDefault(); };
   cv.onpointermove = (e) => { if (!desenhando) return; const p = pos(e); cx.beginPath(); cx.moveTo(ultimo.x, ultimo.y); cx.lineTo(p.x, p.y); cx.stroke(); ultimo = p; e.preventDefault(); };
-  const fim = () => { if (!desenhando) return; desenhando = false; if (!cv.width || !cv.height) return; V.assinatura = cv.toDataURL('image/png'); $('#ass-status').textContent = 'assinatura registrada ✓'; marcarAlterada(); };
+  const fim = () => { if (!desenhando) return; desenhando = false; if (!cv.width || !cv.height) return; V[chave] = cv.toDataURL('image/png'); if (st) st.textContent = 'assinatura registrada ✓'; marcarAlterada(); };
   cv.onpointerup = fim; cv.onpointercancel = fim; cv.onpointerleave = fim;
 }
-function limparAssinatura() { V.assinatura = null; marcarAlterada(); iniciarAssinatura(); }
+function limparAssinatura(chave) { V[chave] = null; marcarAlterada(); if (chave === 'assinatura') iniciarAssinatura('assinatura', 'assinatura', 'ass-status'); else iniciarAssinatura('assinatura-conjuge', 'assinaturaConjuge', 'ass-conjuge-status'); }
 
 /* ====================== SINCRONIZAÇÃO (Google Apps Script) ====================== */
 async function api(acao, dados) {
@@ -785,43 +804,57 @@ async function api(acao, dados) {
   return j;
 }
 function vistoriaParaEnvio(v, fotos) {
-  const { assinatura, ...resto } = v;
-  return { ...resto, temAssinatura: !!assinatura, fotos: fotos.map(f => ({ id: f.id, grupo: f.grupo, categoria: f.categoria, rotulo: f.rotulo, estufaIndex: f.estufaId ? v.estufas.findIndex(e => e.id === f.estufaId) + 1 : null, seq: f.seq, dataOriginal: f.dataOriginal, lat: f.lat, lng: f.lng, origem: f.origem, nomeBase: f.nomeBase })) };
+  const { assinatura, assinaturaConjuge, ...resto } = v;
+  return { ...resto, temAssinatura: !!assinatura, temAssinaturaConjuge: !!assinaturaConjuge, fotos: fotos.map(f => ({ id: f.id, grupo: f.grupo, categoria: f.categoria, rotulo: f.rotulo, estufaIndex: f.estufaId ? v.estufas.findIndex(e => e.id === f.estufaId) + 1 : null, seq: f.seq, dataOriginal: f.dataOriginal, lat: f.lat, lng: f.lng, origem: f.origem, nomeBase: f.nomeBase })) };
 }
 async function sincronizar(manual) {
   if (sincronizando) return; if (!navigator.onLine) { if (manual) toast('Sem internet no momento'); return; }
   const cfg = await getCfg(); if (!cfg.url) { if (manual) { toast('Configure a URL do script em ⚙'); abrirConfig(); } return; }
   atualizarClientes(false);
-  const pend = (await DB.all('vistorias')).filter(v => v.status === 'pronta' || v.status === 'erro');
+  const pend = (await DB.all('vistorias')).filter(v => v.status === 'pronta' || v.status === 'erro' || v.status === 'enviando');
   if (!pend.length) { if (manual) toast('Nada pendente para enviar'); return; }
   sincronizando = true; let okN = 0;
-  const setMsg = (m) => { sincronizar.msg = m; if (V && V.status === 'enviando') { renderRodape(); } if ($('#tela-lista').classList.contains('ativa')) atualizarStatusSync(pend); };
-  for (const v0 of pend) {
-    const v = (V && V.id === v0.id) ? V : v0;
-    v.status = 'enviando'; v.erro = ''; await DB.put('vistorias', v); if (V === v) renderRodape(); setMsg(v.produtor.nome);
-    try {
-      const fotos = await DB.fotosDe(v.id);
-      const dados = vistoriaParaEnvio(v, fotos);
-      setMsg(`${v.produtor.nome}: dados…`);
-      const r1 = await api('upsert', { vistoria: dados });
-      v.pastaDriveUrl = r1.pastaUrl || v.pastaDriveUrl;
-      const pendFotos = fotos.filter(f => !f.enviada);
-      for (let i = 0; i < pendFotos.length; i++) {
-        const f = pendFotos[i]; setMsg(`${v.produtor.nome}: foto ${i + 1}/${pendFotos.length}`);
-        const el = $('#v-prog'); if (el) el.style.width = `${Math.round((i / pendFotos.length) * 100)}%`;
-        const meta = dados.fotos.find(x => x.id === f.id);
-        await api('foto', { vistoriaId: v.id, foto: meta, base64: (await blobParaBase64(f.blob)).split(',')[1] });
-        f.enviada = true; await DB.put('fotos', f);
-        if (V === v) { const c = fotosCache.find(x => x.id === f.id); if (c) c.enviada = true; }
-      }
-      setMsg(`${v.produtor.nome}: gerando ficha…`);
-      const r3 = await api('finalizar', { vistoria: dados, assinaturaBase64: v.assinatura ? v.assinatura.split(',')[1] : null });
-      v.status = 'enviada'; v.enviadaEm = new Date().toISOString(); v.fichaUrl = r3.fichaUrl || ''; v.pastaDriveUrl = r3.pastaUrl || v.pastaDriveUrl; okN++;
-    } catch (e) { v.status = 'erro'; v.erro = e.message; console.error(e); }
-    await DB.put('vistorias', v);
-    if (V === v) renderVistoria();
+  // total de passos para a porcentagem: dados + cada foto pendente + ficha, por vistoria
+  const fotosPend = {}; let total = 0;
+  for (const v of pend) { const fs = (await DB.fotosDe(v.id)).filter(f => !f.enviada); fotosPend[v.id] = fs.length; total += 2 + fs.length; }
+  let feito = 0;
+  const setMsg = (m, incremento) => {
+    if (incremento) feito += incremento;
+    sincronizar.pct = Math.min(100, Math.round(feito / Math.max(1, total) * 100)); sincronizar.msg = m;
+    if (V && V.status === 'enviando') { renderRodape(); }
+    if ($('#tela-lista').classList.contains('ativa')) { atualizarStatusSync(pend); $$('.card.lista .badge.st-enviando').forEach(b => b.textContent = `Enviando ${sincronizar.pct}%`); }
+  };
+  try {
+    for (const v0 of pend) {
+      const v = (V && V.id === v0.id) ? V : v0;
+      v.status = 'enviando'; v.erro = ''; await DB.put('vistorias', v); if (V === v) renderRodape(); setMsg(v.produtor.nome);
+      try {
+        const fotos = await DB.fotosDe(v.id);
+        const dados = vistoriaParaEnvio(v, fotos);
+        setMsg(`${v.produtor.nome}: dados…`);
+        const r1 = await api('upsert', { vistoria: dados });
+        v.pastaDriveUrl = r1.pastaUrl || v.pastaDriveUrl;
+        setMsg(`${v.produtor.nome}: dados enviados`, 1);
+        const pendFotos = fotos.filter(f => !f.enviada);
+        for (let i = 0; i < pendFotos.length; i++) {
+          const f = pendFotos[i]; setMsg(`${v.produtor.nome}: foto ${i + 1}/${pendFotos.length}`);
+          const meta = dados.fotos.find(x => x.id === f.id);
+          await api('foto', { vistoriaId: v.id, foto: meta, base64: (await blobParaBase64(f.blob)).split(',')[1] });
+          f.enviada = true; await DB.put('fotos', f);
+          if (V === v) { const c = fotosCache.find(x => x.id === f.id); if (c) c.enviada = true; }
+          setMsg(`${v.produtor.nome}: foto ${i + 1}/${pendFotos.length}`, 1);
+        }
+        setMsg(`${v.produtor.nome}: gerando ficha…`);
+        const r3 = await api('finalizar', { vistoria: dados, assinaturaBase64: v.assinatura ? v.assinatura.split(',')[1] : null, assinaturaConjugeBase64: v.assinaturaConjuge ? v.assinaturaConjuge.split(',')[1] : null });
+        v.status = 'enviada'; v.enviadaEm = new Date().toISOString(); v.fichaUrl = r3.fichaUrl || ''; v.pastaDriveUrl = r3.pastaUrl || v.pastaDriveUrl; okN++;
+        setMsg(`${v.produtor.nome}: concluída`, 1);
+      } catch (e) { v.status = 'erro'; v.erro = e.message; console.error(e); feito += 2 + (fotosPend[v.id] || 0); }
+      await DB.put('vistorias', v);
+      if (V === v) { try { renderVistoria(); } catch (e) { console.error(e); } }
+    }
+  } finally {
+    sincronizando = false; sincronizar.msg = ''; sincronizar.pct = 0;
   }
-  sincronizando = false; sincronizar.msg = '';
   if ($('#tela-lista').classList.contains('ativa')) renderLista(); else if (V) renderRodape();
   toast(okN === pend.length ? `${okN} vistoria(s) enviada(s) com sucesso ✓` : `${okN} de ${pend.length} enviada(s). Verifique os erros na lista.`, 4000);
 }
@@ -832,6 +865,8 @@ async function sincronizar(manual) {
   try { if (navigator.storage && navigator.storage.persist) await navigator.storage.persist(); } catch { }
   if ('serviceWorker' in navigator && location.protocol.startsWith('http')) { navigator.serviceWorker.register('./sw.js').catch(e => console.warn('SW', e)); }
   await carregarClientesLocal();
+  // vistorias que ficaram presas em "enviando" (app fechado no meio do envio) voltam para a fila
+  for (const v of await DB.all('vistorias')) { if (v.status === 'enviando') { v.status = 'pronta'; await DB.put('vistorias', v); } }
   await renderLista();
   if (navigator.onLine) setTimeout(async () => { const cfg = await getCfg(); if (cfg.url) { atualizarClientes(false); sincronizar(false); } }, 1500);
   setInterval(() => { if (navigator.onLine && !sincronizando) sincronizar(false); }, 5 * 60 * 1000);
