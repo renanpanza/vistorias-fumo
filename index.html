@@ -192,7 +192,7 @@ kbd{background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:
 
 <script>
 'use strict';
-const APP_VERSAO = '1.3.0';
+const APP_VERSAO = '1.4.0';
 
 /* ====================== DEFINIÇÕES (espelham a ficha em papel) ====================== */
 const ESTADO_CIVIL = ['', 'Solteiro(a)', 'Casado(a)', 'União estável', 'Divorciado(a)', 'Separado(a)', 'Viúvo(a)'];
@@ -333,8 +333,9 @@ async function renderLista() {
         ${v.status === 'erro' && v.erro ? `<div class="meta erro">${esc(v.erro)}</div>` : ''}
       </div>
       <span class="badge st-${v.status}">${v.status === 'enviando' ? `Enviando ${sincronizar.pct || 0}%` : rotuloStatus[v.status]}</span>
+      ${v.status !== 'enviando' ? `<button class="btn peq perigo x-lista" type="button" data-id="${v.id}" title="Excluir vistoria" style="padding:6px 9px;min-height:34px">🗑</button>` : ''}
     </div>`).join('');
-  $$('.card.lista', el).forEach(c => c.onclick = () => abrirVistoria(c.dataset.id));
+  $$('.card.lista', el).forEach(c => c.onclick = (ev) => { const b = ev.target.closest('.x-lista'); if (b) { ev.stopPropagation(); excluirVistoria(b.dataset.id); } else abrirVistoria(c.dataset.id); });
   atualizarStatusSync(vs);
 }
 function atualizarStatusSync(vs) {
@@ -555,20 +556,39 @@ function renderVistoria() {
 }
 function renderRodape() {
   const r = $('#v-rodape');
-  if (V.status === 'rascunho') r.innerHTML = `<button class="btn perigo peq" id="v-excluir" type="button">Excluir</button><button class="btn pri" style="flex:1" id="v-concluir" type="button">✔ Concluir e enviar</button>`;
-  else if (V.status === 'pronta' || V.status === 'erro') r.innerHTML = `<button class="btn peq" id="v-reabrir" type="button">Voltar a rascunho</button><button class="btn acc" style="flex:1" id="v-enviar" type="button">${navigator.onLine ? '⇧ Enviar agora' : 'Aguardando internet…'}</button>`;
+  const bx = `<button class="btn perigo peq" id="v-excluir" type="button" title="Excluir vistoria">🗑</button>`;
+  if (V.status === 'rascunho') r.innerHTML = `${bx}<button class="btn pri" style="flex:1" id="v-concluir" type="button">✔ Concluir e enviar</button>`;
+  else if (V.status === 'pronta' || V.status === 'erro') r.innerHTML = `${bx}<button class="btn peq" id="v-reabrir" type="button">Voltar a rascunho</button><button class="btn acc" style="flex:1" id="v-enviar" type="button">${navigator.onLine ? '⇧ Enviar agora' : 'Aguardando internet…'}</button>`;
   else if (V.status === 'enviando') r.innerHTML = `<div class="status-sync"><b>Enviando ${sincronizar.pct || 0}%</b> — ${esc(sincronizar.msg || '')}<div class="progresso"><div id="v-prog" style="width:${sincronizar.pct || 0}%"></div></div></div>`;
-  else r.innerHTML = `<span class="status-sync ok" style="flex:1">✓ Enviada</span><button class="btn peq" id="v-reenviar" type="button">Reenviar (atualizar)</button>`;
-  $('#v-excluir')?.addEventListener('click', excluirVistoria);
+  else r.innerHTML = `${bx}<span class="status-sync ok" style="flex:1">✓ Enviada</span><button class="btn peq" id="v-reenviar" type="button">Reenviar (atualizar)</button>`;
+  $('#v-excluir')?.addEventListener('click', () => excluirVistoria(V.id));
   $('#v-concluir')?.addEventListener('click', concluirVistoria);
   $('#v-reabrir')?.addEventListener('click', async () => { V.status = 'rascunho'; V.erro = ''; await salvarAgora(); renderVistoria(); });
   $('#v-enviar')?.addEventListener('click', () => sincronizar(true));
   $('#v-reenviar')?.addEventListener('click', async () => { V.status = 'pronta'; await salvarAgora(); renderVistoria(); sincronizar(true); });
 }
-async function excluirVistoria() {
-  if (!confirm('Excluir esta vistoria e todas as suas fotos deste celular? Esta ação não pode ser desfeita.')) return;
-  for (const f of fotosCache) await DB.del('fotos', f.id);
-  await DB.del('vistorias', V.id); toast('Vistoria excluída'); irLista();
+// Exclui a vistoria (de qualquer status) deste aparelho e, se já enviada, opcionalmente também do servidor
+async function excluirVistoria(id) {
+  const v = (V && V.id === id) ? V : await DB.get('vistorias', id); if (!v) return;
+  const nome = v.produtor.nome || 'sem nome';
+  const enviada = v.status === 'enviada' || !!v.pastaDriveUrl;
+  if (!confirm(`Excluir a vistoria de "${nome}" e todas as suas fotos DESTE aparelho?`)) return;
+  let noServidor = false;
+  if (enviada) {
+    noServidor = confirm(`Esta vistoria já foi ENVIADA.\n\nOK = apagar TAMBÉM na planilha e no Drive (a pasta do produtor vai para a lixeira do Drive).\nCancelar = apagar só deste aparelho (planilha e Drive ficam como estão).`);
+    if (noServidor && !confirm(`Confirma apagar "${nome}" da planilha e do Drive? A pasta fica 30 dias na lixeira do Drive.`)) return;
+  }
+  if (noServidor) {
+    if (!navigator.onLine) { toast('Sem internet: para apagar no servidor é preciso estar online', 4000); return; }
+    try { toast('Apagando no servidor…', 10000); await api('excluir', { vistoriaId: id }); }
+    catch (e) { if (!confirm('Falha ao apagar no servidor: ' + e.message + '\n\nApagar mesmo assim só deste aparelho?')) return; }
+  }
+  for (const f of await DB.fotosDe(id)) await DB.del('fotos', f.id);
+  await DB.del('vistorias', id);
+  clearTimeout(salvarTimer);
+  if (V && V.id === id) { V = null; fotosCache = []; }   // impede que o salvamento automático recrie a vistoria
+  toast(noServidor ? 'Vistoria excluída aqui e no servidor' : 'Vistoria excluída deste aparelho');
+  if ($('#tela-lista').classList.contains('ativa')) renderLista(); else irLista();
 }
 async function concluirVistoria() {
   const faltas = [];
