@@ -6,6 +6,8 @@
 <meta name="theme-color" content="#2f6b3a">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Vistorias Fumo">
 <title>Vistorias Fumo</title>
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icon-192.png">
@@ -190,7 +192,7 @@ kbd{background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:
 
 <script>
 'use strict';
-const APP_VERSAO = '1.2.0';
+const APP_VERSAO = '1.3.0';
 
 /* ====================== DEFINIÇÕES (espelham a ficha em papel) ====================== */
 const ESTADO_CIVIL = ['', 'Solteiro(a)', 'Casado(a)', 'União estável', 'Divorciado(a)', 'Separado(a)', 'Viúvo(a)'];
@@ -210,8 +212,6 @@ const CAMPOS_ESTUFA = [
   ['quantidadeCarregadaKg','Quantidade carregada (kg)','total de fumo que estava sendo secado na estufa','number'],
   ['capacidadeMediaGrade','Peso médio por grade (kg)','calculado: kg carregados ÷ grades carregadas','calc'],
   ['classeEstimada','Classe estimada do fumo','à época do evento','text','lst-classes'],
-  ['estagioCura','Estágio da cura no momento da queda','ex.: secagem da folha / fixação de cor / secagem do talo — o impacto varia conforme a fase','text','lst-estagios'],
-  ['temperaturaQueda','Temperatura aferida no momento da queda (°F)','','number'],
   ['religamento','Religamento da estufa','data e hora do religamento, temperatura adotada e por quanto tempo a cura continuou após o retorno da energia','textarea'],
   ['providencias','Providências adotadas pelo produtor','o que foi feito para preservar a qualidade do produto','textarea'],
   ['perdaTotalPct','Perda total (%)','','number'],
@@ -284,7 +284,7 @@ async function setCfg(v) { await DB.put('config', { k: 'cfg', v }); }
 
 /* ====================== MODELO ====================== */
 function novoEvento() { return { id: uuid(), dataInicio: '', horaInicio: '', dataRetorno: '', horaRetorno: '' }; }
-function novaEstufa() { const e = { id: uuid() }; CAMPOS_ESTUFA.forEach(c => e[c[0]] = ''); return e; }
+function novaEstufa() { const e = { id: uuid(), condicoes: {} }; CAMPOS_ESTUFA.forEach(c => e[c[0]] = ''); e.fonteEnergia = 'Elétrica'; return e; }
 function novoProtocolo() { return { id: uuid(), numero: '', data: '' }; }
 function novaVistoria(vistoriador) {
   const agora = new Date().toISOString();
@@ -426,9 +426,15 @@ function thumbHtml(f) {
   return `<span class="${f.enviada ? 'env' : ''}"><img src="${urlsThumb.get(f.id)}" data-foto="${f.id}" alt="" loading="lazy"></span>`;
 }
 function tituloEstufa(i) { return `Estufa ${i + 1}`; }
+function rotuloEvento(ev, j) { return `Evento ${j + 1}` + (ev.dataInicio ? ` — ${fmtData(ev.dataInicio)}${ev.horaInicio ? ' ' + ev.horaInicio : ''}` : ''); }
 function estufaHtml(e, i) {
+  if (!e.condicoes) e.condicoes = {};
   return `<details class="subcard" open data-estufa-id="${e.id}"><summary class="sc-head" style="cursor:pointer">🏠 ${tituloEstufa(i)} <span class="pill">${esc(e.modelo || '')}</span>${V.estufas.length > 1 ? `<button class="btn peq perigo x rm-estufa" type="button" data-id="${e.id}">remover</button>` : ''}</summary>
     <div class="linha2">${CAMPOS_ESTUFA.map(c => campo(c[1], `estufas.${i}.${c[0]}`, { hint: c[2], type: c[3], list: c[4] })).join('')}</div>
+    <div class="campo" style="margin-top:14px"><label>Condições desta estufa em cada queda de energia</label><span class="hint">temperatura aferida e fase da secagem no momento de cada evento da seção 3 — um período de secagem pode ter várias quedas, em fases diferentes</span></div>
+    ${V.eventos.map((ev, j) => `<div class="subcard" style="margin:6px 0;background:var(--bg)"><div class="sc-head" style="font-size:14px">⚡ <span data-ev-label="${ev.id}">${rotuloEvento(ev, j)}</span></div>
+      <div class="linha2">${campo('Temperatura aferida na queda (°F)', `estufas.${i}.condicoes.${ev.id}.temperatura`, { type: 'number' })}${campo('Fase da secagem na queda', `estufas.${i}.condicoes.${ev.id}.fase`, { list: 'lst-estagios', hint: 'ex.: murcha / fixação de cor / secagem da folha / secagem do talo' })}</div>
+    </div>`).join('')}
     <div class="campo"><label>Registro fotográfico da ${tituloEstufa(i)}</label></div>
     ${CAT_ESTUFA.map(([k, r]) => fotoGrupo('estufa', k, r, e.id)).join('')}
   </details>`;
@@ -594,7 +600,7 @@ function ligarEventosForm() {
       form.querySelectorAll(`input[data-path="${path}"]`).forEach(i => { i.checked = arr.includes(i.value); i.closest('.chk').classList.toggle('on', i.checked); });
     } else if (el.dataset.tipo === 'radio') { setPath(V, path, el.value); form.querySelectorAll(`input[data-path="${path}"]`).forEach(i => i.closest('.chk').classList.toggle('on', i.checked)); }
     else setPath(V, path, el.type === 'number' ? el.value : el.value);
-    if (path.startsWith('eventos.')) recalcularTempo();
+    if (path.startsWith('eventos.')) { recalcularTempo(); V.eventos.forEach((ev, j) => $$(`[data-ev-label="${ev.id}"]`).forEach(el => el.textContent = rotuloEvento(ev, j))); }
     const me = path.match(/^estufas\.(\d+)\./); if (me) recalcularEstufa(+me[1]);
     if (path === 'produtor.nome') $('#v-titulo').firstChild.textContent = (V.produtor.nome || 'Vistoria') + ' ';
     if (path.startsWith('estufas.') && path.endsWith('.modelo')) { const d = el.closest('details'); const pill = d && d.querySelector('.pill'); if (pill) pill.textContent = el.value; }
@@ -620,7 +626,7 @@ function ligarEventosForm() {
   };
 }
 function rerenderEstufas() { $('#estufas').innerHTML = V.estufas.map(estufaHtml).join(''); V.estufas.forEach((e, i) => recalcularEstufa(i)); }
-function rerenderEventos() { $('#eventos').innerHTML = V.eventos.map(eventoHtml).join(''); recalcularTempo(); }
+function rerenderEventos() { $('#eventos').innerHTML = V.eventos.map(eventoHtml).join(''); recalcularTempo(); rerenderEstufas(); }
 
 /* ====================== CLIENTES CADASTRADOS (aba "Clientes" da planilha) ====================== */
 let CLIENTES = [], CLIENTES_EM = null;
