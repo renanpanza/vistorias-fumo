@@ -192,13 +192,22 @@ kbd{background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:
 
 <script>
 'use strict';
-const APP_VERSAO = '1.4.0';
+const APP_VERSAO = '1.5.0';
 
 /* ====================== DEFINIÇÕES (espelham a ficha em papel) ====================== */
 const ESTADO_CIVIL = ['', 'Solteiro(a)', 'Casado(a)', 'União estável', 'Divorciado(a)', 'Separado(a)', 'Viúvo(a)'];
 const UFS = ['PR','SC','RS','SP','MG','MS','MT','GO','BA','AL','SE','PB','PE','RN','CE','PI','MA','TO','PA','AM','AC','RO','RR','AP','ES','RJ','DF'];
 const FONTES_RESERVA = [['gerador','Gerador próprio'],['solar','Energia solar com backup'],['nenhum','Nenhum']];
 const CAT_ESTUFA = [['externa','Estufa externa'],['interior','Interior'],['carregamento','Carregamento'],['descartado','Material descartado'],['aproveitado','Fumo aproveitado']];
+const CAT_ESTUFA_CONTINUA = [['externa','Estufa externa (casa de máquinas e boxes)'],['controlador','Painel / controlador / app com o histórico da queda'],['descartado','Material descartado (geral)'],['aproveitado','Fumo aproveitado (geral)']];
+// Estufa de carga contínua: posição da folha (1ª letra da classe) → peso seco médio por folha (g); editável em cada estufa
+const POSICOES = [['X','X — baixeira'],['C','C — semimeeira'],['B','B — meeira'],['T','T — ponteira']];
+const PESO_FOLHA_PADRAO = { X: 5, C: 6.5, B: 8, T: 6.5 };
+const FOLHAS_POR_GRAMPO_PADRAO = 300;
+const MAX_BOXES = 10;
+const FASES_BOX = ['', 'Recém-carregado (sem calor ainda)', 'Murcha / amarelecimento', 'Fixação de cor', 'Secagem da folha (lâmina)', 'Secagem do talo', 'Pronto, aguardando descarga'];
+const FORNALHAS = ['', 'Lenha', 'Pellet', 'Dupla queima', 'Outra'];
+const posicaoDaClasse = (cl) => { const l = String(cl || '').trim().toUpperCase().charAt(0); return 'XCBT'.includes(l) && l ? l : ''; };
 const CAT_GERAL = [['externa','Estufa por fora'],['interior','Interior / sistema de secagem'],['carregamento','Carregamento / fumo em cura'],['sem-energia','Estufa sem energia (foto/vídeo datado)'],['descartado','Material descartado'],['termometro','Termômetro / painel'],['padrao-luz','Padrão de luz da estufa (c/ número visível)'],['com-tecnica','Foto com a técnica']];
 const CLASSES_FUMO = ['BO1','BO2','BO3','BR1','BR2','BR3','BL1','BL2','BK','TO1','TO2','TO3','TR1','TR2','TR3','TL1','TL2','TK','CO1','CO2','CO3','CR1','CR2','CR3','CL1','CL2','CK','X01','X02','X03','XR1','XR2','XR3','XL1','XL2','XK','G2','G3','N','SC','ST'];
 const DOCS = [['rg','RG'],['cpf','CPF'],['certidao-casamento','Certidão de casamento'],['comprovante-residencia','Comprovante de residência atual'],['nota-produtor','Nota de produtor / nota de fumo'],['declaracao-luz-cedida','Declaração de luz cedida'],['contrato-integracao','Contrato de integração'],['conta-energia','Conta de energia / identificação da UC'],['protocolo-copel','Protocolo(s) COPEL'],['fotos-videos-produtor','Fotos / vídeos feitos pelo produtor']];
@@ -237,11 +246,58 @@ const r2 = (n) => Math.round(n * 100) / 100;
 const fmtNum = (n) => (n === '' || n == null) ? '' : Number(n).toLocaleString('pt-BR', { maximumFractionDigits: 2 });
 function recalcularEstufa(i) {
   const e = V && V.estufas[i]; if (!e) return;
+  normalizarEstufa(e);
+  if (e.tipoEstufa === 'continua') { recalcularBoxes(e, i); return; }
   const kg = numVal(e.quantidadeCarregadaKg), gr = numVal(e.gradesCarregadas), pp = numVal(e.perdaTotalPct), dp = numVal(e.desclassPct);
   e.capacidadeMediaGrade = (kg != null && gr) ? r2(kg / gr) : '';
   e.perdaTotalKg = (kg != null && pp != null) ? r2(kg * pp / 100) : '';
   e.desclassKg = (kg != null && dp != null) ? r2(kg * dp / 100) : '';
   ['capacidadeMediaGrade', 'perdaTotalKg', 'desclassKg'].forEach(k => { const el = $(`[data-calc="estufas.${i}.${k}"]`); if (el) el.innerHTML = e[k] === '' ? '—' : `<b>${fmtNum(e[k])}</b> kg`; });
+}
+// dia do ciclo de um box na data da 1ª queda (1 = carregado no mesmo dia)
+function diaCicloBox(b) {
+  const ev = (V.eventos || []).find(x => x.dataInicio); if (!ev || !b.dataCarregamento) return '';
+  const d = Math.round((new Date(ev.dataInicio + 'T12:00') - new Date(b.dataCarregamento + 'T12:00')) / 86400000) + 1;
+  return isNaN(d) ? '' : d;
+}
+// Estufa de carga contínua: kg seco por box = grampos × folhas por grampo × peso seco da folha (pela posição/classe);
+// perda e desclassificação (kg) a partir das porcentagens; totais da estufa = soma dos boxes
+function recalcularBoxes(e, i) {
+  const fpg = numVal(e.folhasPorGrampo) || 0;
+  let kgT = 0, perdaT = 0, descT = 0, gramposT = 0, comPrej = [];
+  e.boxes.forEach((b, k) => {
+    if (!b.posicao) b.posicao = posicaoDaClasse(b.classe);
+    const g = numVal(b.grampos) || 0, pf = numVal(e.pesoFolha[b.posicao]) || 0;
+    const inf = numVal(b.kgSecoInformado);
+    if (inf != null && inf > 0) { b.kgSeco = r2(inf); b.metodo = 'informado'; }
+    else { b.kgSeco = (g && fpg && pf) ? r2(g * fpg * pf / 1000) : ''; b.metodo = b.kgSeco === '' ? '' : 'estimado'; }
+    b.diaCiclo = diaCicloBox(b);
+    const kg = numVal(b.kgSeco), pp = numVal(b.perdaPct), dp = numVal(b.desclassPct);
+    if (b.prejuizo === 'Sim' && kg != null) { b.perdaKg = pp != null ? r2(kg * pp / 100) : ''; b.desclassKg = dp != null ? r2(kg * dp / 100) : ''; b.aproveitadoKg = r2(Math.max(0, kg - (numVal(b.perdaKg) || 0) - (numVal(b.desclassKg) || 0))); }
+    else if (b.prejuizo === 'Não' && kg != null) { b.perdaKg = 0; b.desclassKg = 0; b.aproveitadoKg = kg; }
+    else { b.perdaKg = ''; b.desclassKg = ''; b.aproveitadoKg = ''; }
+    if (kg != null) { kgT += kg; gramposT += g; perdaT += numVal(b.perdaKg) || 0; descT += numVal(b.desclassKg) || 0; }
+    if (b.prejuizo === 'Sim') comPrej.push(b.numero);
+    const pre = `estufas.${i}.boxes.${k}.`;
+    const set = (kk, html) => { const el = $(`[data-calc="${pre}${kk}"]`); if (el) el.innerHTML = html; };
+    set('kgSeco', b.kgSeco === '' ? '—' : `<b>${fmtNum(b.kgSeco)}</b> kg seco <span class="hint">${b.metodo === 'informado' ? 'informado/pesado' : `${fmtNum(g)} grampos × ${fmtNum(fpg)} folhas × ${fmtNum(pf)} g`}</span>`);
+    set('perdaKg', b.perdaKg === '' ? '—' : `<b>${fmtNum(b.perdaKg)}</b> kg`);
+    set('desclassKg', b.desclassKg === '' ? '—' : `<b>${fmtNum(b.desclassKg)}</b> kg`);
+    set('aproveitadoKg', b.aproveitadoKg === '' ? '—' : `<b>${fmtNum(b.aproveitadoKg)}</b> kg`);
+    set('diaCiclo', b.diaCiclo === '' ? '—' : `<b>${b.diaCiclo}º</b> dia na 1ª queda`);
+    const pos = $(`[data-pos="${pre}posicao"]`); if (pos && pos.value !== b.posicao) pos.value = b.posicao;
+  });
+  // totais da estufa gravados nos campos "clássicos" (planilha e ficha continuam válidas)
+  e.gradesCarregadas = gramposT || '';
+  e.quantidadeCarregadaKg = e.boxes.length ? r2(kgT) : '';
+  e.perdaTotalKg = e.boxes.length ? r2(perdaT) : '';
+  e.desclassKg = e.boxes.length ? r2(descT) : '';
+  e.perdaTotalPct = kgT ? r2(perdaT / kgT * 100) : '';
+  e.desclassPct = kgT ? r2(descT / kgT * 100) : '';
+  e.capacidadeMediaGrade = gramposT ? r2(kgT / gramposT) : '';
+  e.boxesComPrejuizo = comPrej.join(', ');
+  const tot = $(`[data-calc="estufas.${i}.totais"]`);
+  if (tot) tot.innerHTML = e.boxes.length ? `<b>${fmtNum(e.quantidadeCarregadaKg)}</b> kg seco em ${e.boxes.length} box(es) (${fmtNum(gramposT)} grampos) · perda <b>${fmtNum(e.perdaTotalKg)}</b> kg (${fmtNum(e.perdaTotalPct)} %) · desclassificação <b>${fmtNum(e.desclassKg)}</b> kg (${fmtNum(e.desclassPct)} %) · boxes com prejuízo: <b>${e.boxesComPrejuizo || 'nenhum'}</b>` : '— adicione os boxes carregados';
 }
 function toast(msg, ms = 2500) { const t = $('#toast'); t.textContent = msg; t.classList.add('on'); clearTimeout(toast._t); toast._t = setTimeout(() => t.classList.remove('on'), ms); }
 function getPath(obj, path) { return path.split('.').reduce((o, k) => (o == null ? undefined : o[k]), obj); }
@@ -284,7 +340,19 @@ async function setCfg(v) { await DB.put('config', { k: 'cfg', v }); }
 
 /* ====================== MODELO ====================== */
 function novoEvento() { return { id: uuid(), dataInicio: '', horaInicio: '', dataRetorno: '', horaRetorno: '' }; }
-function novaEstufa() { const e = { id: uuid(), condicoes: {} }; CAMPOS_ESTUFA.forEach(c => e[c[0]] = ''); e.fonteEnergia = 'Elétrica'; return e; }
+function novaEstufa() { const e = { id: uuid(), condicoes: {}, tipoEstufa: 'convencional', geradorTem: '', geradorAcionado: '', geradorTempoMin: '', geradorSuficiente: '', geradorObs: '', boxesTotal: '', fornalha: '', controlador: '', fornalhaAcesa: '', folhasPorGrampo: FOLHAS_POR_GRAMPO_PADRAO, pesoFolha: { ...PESO_FOLHA_PADRAO }, boxes: [] }; CAMPOS_ESTUFA.forEach(c => e[c[0]] = ''); e.fonteEnergia = 'Elétrica'; return e; }
+function novoBox(n) { return { id: uuid(), numero: n, dataCarregamento: '', grampos: '', classe: '', posicao: '', kgSecoInformado: '', condicoes: {}, prejuizo: '', perdaPct: '', desclassPct: '', desclassDe: '', desclassPara: '', kgSeco: '', perdaKg: '', desclassKg: '', aproveitadoKg: '', diaCiclo: '', metodo: '' }; }
+// garante os campos novos (v1.5) em estufas criadas por versões anteriores do app
+function normalizarEstufa(e) {
+  if (!e.condicoes) e.condicoes = {};
+  if (!e.tipoEstufa) e.tipoEstufa = 'convencional';
+  ['geradorTem', 'geradorAcionado', 'geradorTempoMin', 'geradorSuficiente', 'geradorObs', 'boxesTotal', 'fornalha', 'controlador', 'fornalhaAcesa'].forEach(k => { if (e[k] == null) e[k] = ''; });
+  if (e.folhasPorGrampo == null || e.folhasPorGrampo === '') e.folhasPorGrampo = FOLHAS_POR_GRAMPO_PADRAO;
+  if (!e.pesoFolha) e.pesoFolha = { ...PESO_FOLHA_PADRAO };
+  if (!Array.isArray(e.boxes)) e.boxes = [];
+  e.boxes.forEach(b => { if (!b.condicoes) b.condicoes = {}; });
+  return e;
+}
 function novoProtocolo() { return { id: uuid(), numero: '', data: '' }; }
 function novaVistoria(vistoriador) {
   const agora = new Date().toISOString();
@@ -402,7 +470,7 @@ function campo(label, path, opts = {}) {
   let inp;
   if (type === 'calc') inp = `<div class="calc" data-calc="${path}">${val === '' || val == null ? '—' : `<b>${fmtNum(val)}</b> kg`}</div>`;
   else if (type === 'textarea') inp = `<textarea data-path="${path}" placeholder="${esc(opts.placeholder || '')}">${esc(val)}</textarea>`;
-  else if (type === 'select') inp = `<select data-path="${path}">${opts.opcoes.map(o => `<option value="${esc(o)}" ${o === val ? 'selected' : ''}>${esc(o) || '—'}</option>`).join('')}</select>`;
+  else if (type === 'select') inp = `<select data-path="${path}" ${opts.attr || ''}>${opts.opcoes.map(o => { const [k, r] = Array.isArray(o) ? o : [o, o]; return `<option value="${esc(k)}" ${k === val ? 'selected' : ''}>${esc(r) || '—'}</option>`; }).join('')}</select>`;
   else inp = `<input type="${type}" data-path="${path}" value="${esc(val)}" ${opts.list ? `list="${opts.list}"` : ''} ${opts.inputmode ? `inputmode="${opts.inputmode}"` : ''} ${opts.mask ? `data-mask="${opts.mask}"` : ''} ${type === 'number' ? 'step="any"' : ''} placeholder="${esc(opts.placeholder || '')}">`;
   return `<div class="campo"><label>${esc(label)}</label>${inp}${hint}</div>`;
 }
@@ -429,16 +497,62 @@ function thumbHtml(f) {
 function tituloEstufa(i) { return `Estufa ${i + 1}`; }
 function rotuloEvento(ev, j) { return `Evento ${j + 1}` + (ev.dataInicio ? ` — ${fmtData(ev.dataInicio)}${ev.horaInicio ? ' ' + ev.horaInicio : ''}` : ''); }
 function estufaHtml(e, i) {
-  if (!e.condicoes) e.condicoes = {};
-  return `<details class="subcard" open data-estufa-id="${e.id}"><summary class="sc-head" style="cursor:pointer">🏠 ${tituloEstufa(i)} <span class="pill">${esc(e.modelo || '')}</span>${V.estufas.length > 1 ? `<button class="btn peq perigo x rm-estufa" type="button" data-id="${e.id}">remover</button>` : ''}</summary>
-    <div class="linha2">${CAMPOS_ESTUFA.map(c => campo(c[1], `estufas.${i}.${c[0]}`, { hint: c[2], type: c[3], list: c[4] })).join('')}</div>
-    <div class="campo" style="margin-top:14px"><label>Condições desta estufa em cada queda de energia</label><span class="hint">temperatura aferida e fase da secagem no momento de cada evento da seção 3 — um período de secagem pode ter várias quedas, em fases diferentes</span></div>
+  normalizarEstufa(e);
+  const cont = e.tipoEstufa === 'continua';
+  const pre = `estufas.${i}.`;
+  // campos da carga única que, na estufa contínua, são substituídos pelo quadro de boxes (os totais são calculados)
+  const soConv = ['capacidadeTotal', 'gradesCarregadas', 'dataCarregamento', 'quantidadeCarregadaKg', 'capacidadeMediaGrade', 'classeEstimada', 'perdaTotalPct', 'perdaTotalKg', 'desclassPct', 'desclassKg', 'desclassDe', 'desclassPara'];
+  const campos = CAMPOS_ESTUFA.filter(c => !cont || !soConv.includes(c[0]));
+  const gerador = `
+    <div class="campo"><label>⚡ Gerador na estufa</label><span class="hint">registre mesmo quando não houver — é o que prova a ausência de alternativa na queda</span>
+      <div class="checks">${radio('Tinha gerador', pre + 'geradorTem', 'Sim')}${radio('Não tinha gerador', pre + 'geradorTem', 'Não')}</div></div>
+    ${e.geradorTem === 'Sim' ? `<div class="campo"><label>Foi acionado na queda?</label><div class="checks">${radio('Sim', pre + 'geradorAcionado', 'Sim')}${radio('Não', pre + 'geradorAcionado', 'Não')}</div></div>
+    ${e.geradorAcionado === 'Sim' ? `<div class="linha2">${campo('Acionado quanto tempo após a queda (min)', pre + 'geradorTempoMin', { type: 'number' })}${campo('Deu conta da estufa (ventiladores/controlador)?', pre + 'geradorSuficiente', { type: 'select', opcoes: ['', 'Sim', 'Parcialmente', 'Não'] })}</div>` : ''}
+    ${campo(e.geradorAcionado === 'Sim' ? 'Observações sobre o gerador (potência, combustível, por que não deu conta)' : 'Por que não foi acionado / observações', pre + 'geradorObs', { type: 'textarea' })}` : ''}`;
+  const boxes = cont ? `
+    <div class="subcard" style="background:var(--bg)"><div class="sc-head" style="font-size:14px">🧱 Estufa de carga contínua — dados gerais</div>
+      <div class="linha2">${campo('Nº total de boxes da estufa', pre + 'boxesTotal', { type: 'number', hint: 'ex.: 8' })}${campo('Tipo de fornalha', pre + 'fornalha', { type: 'select', opcoes: FORNALHAS })}
+      ${campo('Controlador automático / monitoramento por app?', pre + 'controlador', { type: 'select', opcoes: ['', 'Sim', 'Não'], hint: 'se sim, fotografe a tela com o histórico de temperatura/umidade da queda' })}${campo('A fornalha continuou acesa durante a queda?', pre + 'fornalhaAcesa', { type: 'select', opcoes: ['', 'Sim', 'Não', 'Não sabe'], hint: 'sem os ventiladores, o box junto à casa de máquinas pode superaquecer' })}</div>
+      <div class="campo" style="margin-top:8px"><label>Parâmetros de estimativa do peso seco (editáveis nesta vistoria)</label><span class="hint">kg seco do box = grampos × folhas por grampo × peso seco médio da folha pela posição (1ª letra da classe). Valores-padrão calibrados pela produtividade média do PR; ajuste se o produtor informar algo diferente.</span></div>
+      <div class="linha2">${campo('Folhas por grampo', pre + 'folhasPorGrampo', { type: 'number', hint: `padrão ${FOLHAS_POR_GRAMPO_PADRAO}` })}
+      ${POSICOES.map(([k, r]) => campo(`Peso seco da folha ${r} (g)`, pre + 'pesoFolha.' + k, { type: 'number', hint: `padrão ${fmtNum(PESO_FOLHA_PADRAO[k])} g` })).join('')}</div>
+    </div>
+    <div class="campo" style="margin-top:10px"><label>Boxes carregados no momento da queda</label><span class="hint">um quadro para cada box que tinha fumo — inclusive os que não tiveram prejuízo</span></div>
+    <div id="boxes-${i}">${e.boxes.map((b, k) => boxHtml(e, i, b, k)).join('')}</div>
+    ${e.boxes.length < MAX_BOXES ? `<button class="btn bloco" type="button" data-add-box="${i}">＋ Adicionar box carregado</button>` : ''}
+    <div class="campo"><label>Totais desta estufa (calculados)</label><div class="calc" data-calc="${pre}totais"></div></div>` : '';
+  return `<details class="subcard" open data-estufa-id="${e.id}"><summary class="sc-head" style="cursor:pointer">🏠 ${tituloEstufa(i)} <span class="pill">${esc(cont ? 'carga contínua' + (e.modelo ? ' · ' + e.modelo : '') : (e.modelo || ''))}</span>${V.estufas.length > 1 ? `<button class="btn peq perigo x rm-estufa" type="button" data-id="${e.id}">remover</button>` : ''}</summary>
+    <div class="campo"><label>Tipo de estufa</label><div class="checks">${radio('Convencional / carga única', pre + 'tipoEstufa', 'convencional')}${radio('Carga contínua (boxes)', pre + 'tipoEstufa', 'continua')}</div></div>
+    <div class="linha2">${campos.map(c => campo(c[1], pre + c[0], { hint: c[2], type: c[3], list: c[4] })).join('')}</div>
+    ${gerador}
+    ${boxes}
+    ${cont ? '' : `<div class="campo" style="margin-top:14px"><label>Condições desta estufa em cada queda de energia</label><span class="hint">temperatura aferida e fase da secagem no momento de cada evento da seção 3 — um período de secagem pode ter várias quedas, em fases diferentes</span></div>
     ${V.eventos.map((ev, j) => `<div class="subcard" style="margin:6px 0;background:var(--bg)"><div class="sc-head" style="font-size:14px">⚡ <span data-ev-label="${ev.id}">${rotuloEvento(ev, j)}</span></div>
-      <div class="linha2">${campo('Temperatura aferida na queda (°F)', `estufas.${i}.condicoes.${ev.id}.temperatura`, { type: 'number' })}${campo('Fase da secagem na queda', `estufas.${i}.condicoes.${ev.id}.fase`, { list: 'lst-estagios', hint: 'ex.: murcha / fixação de cor / secagem da folha / secagem do talo' })}</div>
-    </div>`).join('')}
-    <div class="campo"><label>Registro fotográfico da ${tituloEstufa(i)}</label></div>
-    ${CAT_ESTUFA.map(([k, r]) => fotoGrupo('estufa', k, r, e.id)).join('')}
+      <div class="linha2">${campo('Temperatura aferida na queda (°F)', `${pre}condicoes.${ev.id}.temperatura`, { type: 'number' })}${campo('Fase da secagem na queda', `${pre}condicoes.${ev.id}.fase`, { list: 'lst-estagios', hint: 'ex.: murcha / fixação de cor / secagem da folha / secagem do talo' })}</div>
+    </div>`).join('')}`}
+    <div class="campo"><label>Registro fotográfico da ${tituloEstufa(i)}${cont ? ' (geral — as fotos de cada box ficam no quadro do box)' : ''}</label></div>
+    ${(cont ? CAT_ESTUFA_CONTINUA : CAT_ESTUFA).map(([k, r]) => fotoGrupo('estufa', k, r, e.id)).join('')}
   </details>`;
+}
+// quadro de um box da estufa de carga contínua
+function boxHtml(e, i, b, k) {
+  const pre = `estufas.${i}.boxes.${k}.`;
+  const prej = b.prejuizo === 'Sim';
+  return `<div class="subcard" style="background:var(--bg)" data-box-id="${b.id}"><div class="sc-head" style="font-size:14px">📦 Box ${b.numero} <button class="btn peq perigo x rm-box" type="button" data-estufa="${i}" data-id="${b.id}">remover</button></div>
+    <div class="linha2">${campo('Nº do box', pre + 'numero', { type: 'number', hint: '1 = mais próximo da fornalha' })}${campo('Data do carregamento', pre + 'dataCarregamento', { type: 'date' })}
+    ${campo('Grampos carregados', pre + 'grampos', { type: 'number' })}${campo('Classe estimada do fumo', pre + 'classe', { list: 'lst-classes', hint: 'a 1ª letra define a posição' })}
+    ${campo('Posição da folha', pre + 'posicao', { type: 'select', opcoes: [['', '—']].concat(POSICOES), attr: `data-pos="${pre}posicao"` })}${campo('kg seco do box — se pesado/informado', pre + 'kgSecoInformado', { type: 'number', hint: 'opcional: substitui a estimativa' })}</div>
+    <div class="linha2"><div class="campo"><label>kg seco estimado</label><div class="calc" data-calc="${pre}kgSeco">—</div></div><div class="campo"><label>Dia do ciclo</label><div class="calc" data-calc="${pre}diaCiclo">—</div></div></div>
+    ${V.eventos.map((ev, j) => `<div class="linha2"><div class="campo" style="grid-column:1/-1;margin:0"><label style="font-weight:600">⚡ <span data-ev-label="${ev.id}">${rotuloEvento(ev, j)}</span></label></div>
+      ${campo('Fase da cura neste box na queda', `${pre}condicoes.${ev.id}.fase`, { type: 'select', opcoes: FASES_BOX })}${campo('Temperatura no box (°F), se houver sensor', `${pre}condicoes.${ev.id}.temperatura`, { type: 'number' })}</div>`).join('')}
+    <div class="campo"><label>Houve prejuízo neste box?</label><div class="checks">${radio('Sim', pre + 'prejuizo', 'Sim')}${radio('Não', pre + 'prejuizo', 'Não')}</div></div>
+    ${prej ? `<div class="linha2">${campo('Perda total (%)', pre + 'perdaPct', { type: 'number' })}<div class="campo"><label>Perda total (kg seco)</label><div class="calc" data-calc="${pre}perdaKg">—</div></div>
+      ${campo('Desclassificação (%)', pre + 'desclassPct', { type: 'number' })}<div class="campo"><label>Desclassificação (kg seco)</label><div class="calc" data-calc="${pre}desclassKg">—</div></div>
+      ${campo('Desclassificação — classe DE', pre + 'desclassDe', { list: 'lst-classes' })}${campo('Desclassificação — classe PARA', pre + 'desclassPara', { list: 'lst-classes' })}
+      <div class="campo"><label>Fumo aproveitado (kg seco)</label><div class="calc" data-calc="${pre}aproveitadoKg">—</div></div></div>` : ''}
+    <div class="campo" style="margin-bottom:0"><label>Fotos do box ${b.numero}</label><span class="hint">interior do box, fumo danificado e fumo aproveitado</span></div>
+    ${fotoGrupo('estufa', 'box' + b.numero, 'Box ' + b.numero, e.id)}
+  </div>`;
 }
 function eventoHtml(ev, i) {
   const d = duracaoEvento(ev);
@@ -469,7 +583,7 @@ function renderVistoria() {
   const p = 'produtor.';
   $('#v-sub').textContent = `${rotuloStatus[V.status]}${V.vistoriador ? ' · ' + V.vistoriador : ''}`;
   $('#v-form').innerHTML = `
-  <datalist id="lst-modelos"><option value="Carijó"><option value="Convencional"><option value="Estufa elétrica de ar forçado"><option value="Estufa a lenha"><option value="Estufa loose leaf"></datalist>
+  <datalist id="lst-modelos"><option value="Carijó"><option value="Convencional"><option value="Estufa elétrica de ar forçado"><option value="Estufa a lenha"><option value="Estufa loose leaf"><option value="Estufa de carga contínua"></datalist>
   <datalist id="lst-fontes"><option value="Elétrica"><option value="Lenha"><option value="GLP"><option value="Elétrica + lenha"><option value="Elétrica + GLP"></datalist>
   <datalist id="lst-classes">${CLASSES_FUMO.map(c => `<option value="${c}">`).join('')}</datalist>
   <datalist id="lst-estagios"><option value="Murcha / amarelecimento"><option value="Fixação de cor"><option value="Secagem da folha (lâmina)"><option value="Secagem do talo"></datalist>
@@ -601,6 +715,7 @@ async function concluirVistoria() {
   if ((V.produtor.conjuge || /Casad|União/.test(V.produtor.estadoCivil || '')) && !V.assinaturaConjuge) avisos.push('sem assinatura do cônjuge');
   if (!fotosCache.length) avisos.push('nenhuma foto registrada');
   if (V.eventos.some(e => (duracaoEvento(e) ?? 0) < 0)) avisos.push('há evento com retorno antes do início');
+  V.estufas.forEach((e, i) => { normalizarEstufa(e); if (!e.geradorTem) avisos.push(`estufa ${i + 1} sem a informação de gerador`); if (e.tipoEstufa === 'continua') { if (!e.boxes.length) avisos.push(`estufa ${i + 1} (carga contínua) sem boxes`); else if (e.boxes.some(b => !b.prejuizo)) avisos.push(`estufa ${i + 1}: há box sem informar se houve prejuízo`); } });
   if (avisos.length && !confirm('Atenção: ' + avisos.join('; ') + '.\n\nConcluir mesmo assim?')) return;
   V.status = 'pronta'; V.erro = ''; await salvarAgora(); renderVistoria();
   if (navigator.onLine) sincronizar(true); else toast('Marcada para envio. Será enviada automaticamente quando houver internet.', 4000);
@@ -621,9 +736,17 @@ function ligarEventosForm() {
     } else if (el.dataset.tipo === 'radio') { setPath(V, path, el.value); form.querySelectorAll(`input[data-path="${path}"]`).forEach(i => i.closest('.chk').classList.toggle('on', i.checked)); }
     else setPath(V, path, el.type === 'number' ? el.value : el.value);
     if (path.startsWith('eventos.')) { recalcularTempo(); V.eventos.forEach((ev, j) => $$(`[data-ev-label="${ev.id}"]`).forEach(el => el.textContent = rotuloEvento(ev, j))); }
-    const me = path.match(/^estufas\.(\d+)\./); if (me) recalcularEstufa(+me[1]);
+    const me = path.match(/^estufas\.(\d+)\./);
+    if (me) {
+      const i = +me[1], e = V.estufas[i];
+      const mb = path.match(/^estufas\.\d+\.boxes\.(\d+)\.(\w+)$/);
+      if (mb && mb[2] === 'classe') { const b = e.boxes[+mb[1]]; const pz = posicaoDaClasse(el.value); if (pz) b.posicao = pz; }
+      if (mb && mb[2] === 'numero') { const b = e.boxes[+mb[1]]; b.numero = numVal(el.value) || b.numero; }
+      if (/\.(tipoEstufa|geradorTem|geradorAcionado)$/.test(path) || (mb && mb[2] === 'prejuizo')) { marcarAlterada(); rerenderEstufa(i); return; }
+      recalcularEstufa(i);
+    }
     if (path === 'produtor.nome') $('#v-titulo').firstChild.textContent = (V.produtor.nome || 'Vistoria') + ' ';
-    if (path.startsWith('estufas.') && path.endsWith('.modelo')) { const d = el.closest('details'); const pill = d && d.querySelector('.pill'); if (pill) pill.textContent = el.value; }
+    if (path.startsWith('estufas.') && path.endsWith('.modelo')) { const d = el.closest('details'); const pill = d && d.querySelector('.pill'); const cont = V.estufas[+me[1]].tipoEstufa === 'continua'; if (pill) pill.textContent = cont ? 'carga contínua' + (el.value ? ' · ' + el.value : '') : el.value; }
     marcarAlterada();
   };
   form.onchange = form.oninput;
@@ -631,6 +754,8 @@ function ligarEventosForm() {
     const b = ev.target.closest('button, img[data-foto]'); if (!b) return;
     if (b.id === 'add-estufa') { V.estufas.push(novaEstufa()); marcarAlterada(); rerenderEstufas(); }
     else if (b.classList.contains('rm-estufa')) { ev.preventDefault(); const e = V.estufas.find(x => x.id === b.dataset.id); const n = fotosCache.filter(f => f.estufaId === e.id).length; if (!confirm(`Remover esta estufa${n ? ` e suas ${n} foto(s)` : ''}?`)) return; for (const f of fotosCache.filter(f => f.estufaId === e.id)) { await DB.del('fotos', f.id); } fotosCache = fotosCache.filter(f => f.estufaId !== e.id); V.estufas = V.estufas.filter(x => x.id !== b.dataset.id); marcarAlterada(); rerenderEstufas(); }
+    else if (b.dataset.addBox != null) { const i = +b.dataset.addBox, e = V.estufas[i]; const n = e.boxes.length ? Math.max(...e.boxes.map(x => numVal(x.numero) || 0)) + 1 : 1; e.boxes.push(novoBox(n)); marcarAlterada(); rerenderEstufa(i); }
+    else if (b.classList.contains('rm-box')) { ev.preventDefault(); const i = +b.dataset.estufa, e = V.estufas[i]; const bx = e.boxes.find(x => x.id === b.dataset.id); const cat = 'box' + bx.numero; const n = fotosCache.filter(f => f.estufaId === e.id && f.categoria === cat).length; if (!confirm(`Remover o box ${bx.numero}${n ? ` e suas ${n} foto(s)` : ''}?`)) return; for (const f of fotosCache.filter(f => f.estufaId === e.id && f.categoria === cat)) { await DB.del('fotos', f.id); } fotosCache = fotosCache.filter(f => !(f.estufaId === e.id && f.categoria === cat)); e.boxes = e.boxes.filter(x => x.id !== b.dataset.id); marcarAlterada(); rerenderEstufa(i); }
     else if (b.id === 'add-evento') { V.eventos.push(novoEvento()); marcarAlterada(); rerenderEventos(); }
     else if (b.classList.contains('rm-evento')) { V.eventos = V.eventos.filter(x => x.id !== b.dataset.id); marcarAlterada(); rerenderEventos(); }
     else if (b.id === 'add-protocolo') { V.protocolos.push(novoProtocolo()); marcarAlterada(); $('#protocolos').innerHTML = V.protocolos.map((pr, i) => `<div class="linha2">${campo('Protocolo nº', `protocolos.${i}.numero`)}${campo('Data', `protocolos.${i}.data`, { type: 'date' })}</div>`).join(''); }
@@ -646,6 +771,8 @@ function ligarEventosForm() {
   };
 }
 function rerenderEstufas() { $('#estufas').innerHTML = V.estufas.map(estufaHtml).join(''); V.estufas.forEach((e, i) => recalcularEstufa(i)); }
+// redesenha só uma estufa (mantém a rolagem; usado ao trocar tipo/gerador/prejuízo e ao mexer nos boxes)
+function rerenderEstufa(i) { const e = V.estufas[i]; const d = $(`details[data-estufa-id="${e.id}"]`); if (!d) { rerenderEstufas(); return; } const tmp = document.createElement('div'); tmp.innerHTML = estufaHtml(e, i); d.replaceWith(tmp.firstElementChild); recalcularEstufa(i); }
 function rerenderEventos() { $('#eventos').innerHTML = V.eventos.map(eventoHtml).join(''); recalcularTempo(); rerenderEstufas(); }
 
 /* ====================== CLIENTES CADASTRADOS (aba "Clientes" da planilha) ====================== */
