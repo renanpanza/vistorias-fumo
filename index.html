@@ -81,6 +81,14 @@ main{padding:12px 12px 0;max-width:760px;margin:0 auto}
 .thumbs .env{position:relative}
 .thumbs .env::after{content:"✓";position:absolute;right:3px;bottom:3px;background:var(--ok);color:#fff;font-size:11px;border-radius:999px;width:18px;height:18px;display:flex;align-items:center;justify-content:center}
 .fg-btns{display:flex;gap:8px}
+.thumbs .vid{position:relative}
+.thumbs .vid i{position:absolute;left:3px;bottom:3px;background:rgba(0,0,0,.7);color:#fff;font-size:11px;font-style:normal;border-radius:6px;padding:1px 5px}
+.modal video{max-width:100%;max-height:70vh;border-radius:8px;background:#000}
+#rec-preview{width:100%;max-height:60vh;background:#000;border-radius:8px}
+#rec-timer{color:#fff;font-size:22px;font-weight:700;margin:8px 0;text-align:center}
+#rec-timer.on{color:#ff5252}
+.rec-dot{display:inline-block;width:12px;height:12px;border-radius:50%;background:#ff1744;margin-right:6px;animation:pisca 1s infinite}
+@keyframes pisca{50%{opacity:.2}}
 .fg-btns .btn{flex:1;padding:9px;min-height:42px;font-size:14px}
 .docrow{display:flex;align-items:center;gap:8px;flex-wrap:wrap;border-bottom:1px solid var(--line);padding:10px 0}
 .docrow:last-child{border-bottom:0}
@@ -181,21 +189,33 @@ kbd{background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:
 </section>
 
 <input type="file" id="in-cam" accept="image/*" capture="environment" hidden>
-<input type="file" id="in-gal" accept="image/*" multiple hidden>
+<input type="file" id="in-gal" accept="image/*,video/*" multiple hidden>
 
 <div class="modal" id="modal-foto">
   <img id="modal-img" alt="">
+  <video id="modal-video" controls playsinline style="display:none"></video>
   <div id="modal-legenda" style="color:#ddd;font-size:13px;margin-top:8px;text-align:center"></div>
   <div class="acoes">
     <button class="btn" id="modal-fechar">Fechar</button>
     <button class="btn" id="modal-excluir" style="color:#ff8a80">Excluir foto</button>
   </div>
 </div>
+<div class="modal" id="modal-rec">
+  <video id="rec-preview" autoplay muted playsinline></video>
+  <div id="rec-timer">pronto para gravar em 720p</div>
+  <div id="rec-msg" style="color:#ddd;font-size:13px;text-align:center;max-width:420px"></div>
+  <div class="acoes">
+    <button class="btn" id="rec-cancelar">Cancelar</button>
+    <button class="btn" id="rec-virar" title="trocar câmera">🔄 Câmera</button>
+    <button class="btn" id="rec-iniciar" style="background:#c62828;border-color:#c62828">● Gravar</button>
+    <button class="btn" id="rec-parar" style="display:none;background:#2e7d32;border-color:#2e7d32">■ Parar e salvar</button>
+  </div>
+</div>
 <div class="toast" id="toast"></div>
 
 <script>
 'use strict';
-const APP_VERSAO = '1.6.0';
+const APP_VERSAO = '1.7.0';
 
 /* ====================== DEFINIÇÕES (espelham a ficha em papel) ====================== */
 const ESTADO_CIVIL = ['', 'Solteiro(a)', 'Casado(a)', 'União estável', 'Divorciado(a)', 'Separado(a)', 'Viúvo(a)'];
@@ -349,13 +369,13 @@ const DB = (() => {
   function abrir() {
     if (db) return Promise.resolve(db);
     return new Promise((res, rej) => {
-      const r = indexedDB.open('vistoriasFumo', 1);
+      const r = indexedDB.open('vistoriasFumo', 2);
       r.onupgradeneeded = () => {
         const d = r.result;
-        d.createObjectStore('vistorias', { keyPath: 'id' });
-        const f = d.createObjectStore('fotos', { keyPath: 'id' });
-        f.createIndex('vistoriaId', 'vistoriaId');
-        d.createObjectStore('config', { keyPath: 'k' });
+        if (!d.objectStoreNames.contains('vistorias')) d.createObjectStore('vistorias', { keyPath: 'id' });
+        if (!d.objectStoreNames.contains('fotos')) { const f = d.createObjectStore('fotos', { keyPath: 'id' }); f.createIndex('vistoriaId', 'vistoriaId'); }
+        if (!d.objectStoreNames.contains('config')) d.createObjectStore('config', { keyPath: 'k' });
+        if (!d.objectStoreNames.contains('videos')) { const vd = d.createObjectStore('videos', { keyPath: 'id' }); vd.createIndex('vistoriaId', 'vistoriaId'); }   // v1.7
       };
       r.onsuccess = () => { db = r.result; res(db); };
       r.onerror = () => rej(r.error);
@@ -369,6 +389,7 @@ const DB = (() => {
     del: (store, k) => tx(store, 'readwrite', s => s.delete(k)),
     all: async (store) => { const d = await abrir(); return req(d.transaction(store).objectStore(store).getAll()); },
     fotosDe: async (vid) => { const d = await abrir(); return req(d.transaction('fotos').objectStore('fotos').index('vistoriaId').getAll(vid)); },
+    videosDe: async (vid) => { const d = await abrir(); return req(d.transaction('videos').objectStore('videos').index('vistoriaId').getAll(vid)); },
   };
 })();
 async function getCfg() { const c = await DB.get('config', 'cfg'); return c ? c.v : { url: '', chave: '', vistoriador: '' }; }
@@ -416,6 +437,7 @@ function novaVistoria(vistoriador) {
 /* ====================== ESTADO ====================== */
 let V = null;             // vistoria aberta
 let fotosCache = [];      // fotos da vistoria aberta
+let videosCache = [];     // vídeos da vistoria aberta (v1.7)
 const urlsThumb = new Map();
 let posAtual = null, watchId = null;
 let salvarTimer = null;
@@ -433,15 +455,16 @@ document.addEventListener('visibilitychange', () => { if (document.hidden && V) 
 /* ====================== LISTA ====================== */
 async function renderLista() {
   const vs = (await DB.all('vistorias')).sort((a, b) => (b.atualizadoEm || '').localeCompare(a.atualizadoEm || ''));
-  const fotos = await DB.all('fotos');
+  const fotos = await DB.all('fotos'); const videos = await DB.all('videos');
   const cont = {}; fotos.forEach(f => cont[f.vistoriaId] = (cont[f.vistoriaId] || 0) + 1);
+  const contV = {}; videos.forEach(f => contV[f.vistoriaId] = (contV[f.vistoriaId] || 0) + 1);
   const el = $('#lista');
   if (!vs.length) { el.innerHTML = '<div class="vazio">Nenhuma vistoria ainda.<br>Toque em <b>Nova vistoria</b> para começar.</div>'; }
   else el.innerHTML = vs.map(v => `
     <div class="card lista" data-id="${v.id}">
       <div class="info">
         <div class="nome">${esc(v.produtor.nome) || '<i style="color:var(--mut)">Sem nome</i>'}</div>
-        <div class="meta">${(v.estufas || []).some(e => e.incendio === 'Sim') ? '<span class="pill fogo">🔥 incêndio</span> ' : ''}${esc([v.produtor.municipio, fmtData(v.produtor.dataVisita)].filter(Boolean).join(' · '))} · ${v.estufas.length} estufa(s) · ${cont[v.id] || 0} foto(s)${v.vistoriador ? ' · ' + esc(v.vistoriador) : ''}</div>
+        <div class="meta">${(v.estufas || []).some(e => e.incendio === 'Sim') ? '<span class="pill fogo">🔥 incêndio</span> ' : ''}${esc([v.produtor.municipio, fmtData(v.produtor.dataVisita)].filter(Boolean).join(' · '))} · ${v.estufas.length} estufa(s) · ${cont[v.id] || 0} foto(s)${contV[v.id] ? ' · ' + contV[v.id] + ' vídeo(s)' : ''}${v.vistoriador ? ' · ' + esc(v.vistoriador) : ''}</div>
         ${v.status === 'erro' && v.erro ? `<div class="meta erro">${esc(v.erro)}</div>` : ''}
       </div>
       <span class="badge st-${v.status}">${v.status === 'enviando' ? `Enviando ${sincronizar.pct || 0}%` : rotuloStatus[v.status]}</span>
@@ -476,15 +499,17 @@ $('#cfg-testar').onclick = async () => {
 };
 $('#cfg-atualizar').onclick = async () => { const reg = await navigator.serviceWorker?.getRegistration(); if (reg) { await reg.update(); toast('Verificado. Se houver nova versão, feche e reabra o app.'); } else toast('Sem service worker (abra pelo endereço https)'); };
 $('#cfg-backup').onclick = async () => {
-  const vs = await DB.all('vistorias'); const fs = await DB.all('fotos');
-  const fotos = []; for (const f of fs) fotos.push({ ...f, blob: undefined, base64: await blobParaBase64(f.blob) });
-  const blob = new Blob([JSON.stringify({ versao: APP_VERSAO, exportadoEm: new Date().toISOString(), vistorias: vs, fotos })], { type: 'application/json' });
+  const vs = await DB.all('vistorias'); const fs = await DB.all('fotos'); const vds = await DB.all('videos');
+  const fotos = []; for (const f of fs) fotos.push({ ...f, blob: undefined, blobLimpo: undefined, base64: await blobParaBase64(f.blob), base64Limpo: f.blobLimpo ? await blobParaBase64(f.blobLimpo) : null });
+  const videos = []; for (const f of vds) videos.push({ ...f, blob: undefined, poster: undefined, base64: await blobParaBase64(f.blob), posterBase64: f.poster ? await blobParaBase64(f.poster) : null });
+  const blob = new Blob([JSON.stringify({ versao: APP_VERSAO, exportadoEm: new Date().toISOString(), vistorias: vs, fotos, videos })], { type: 'application/json' });
   const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `backup_vistorias_${carimboArquivo(new Date())}.json`; a.click();
 };
 $('#cfg-importar').onchange = async (ev) => {
   const f = ev.target.files[0]; if (!f) return;
   try { const j = JSON.parse(await f.text()); let n = 0; for (const v of j.vistorias || []) { await DB.put('vistorias', v); n++; }
-    for (const ft of j.fotos || []) { const blob = await (await fetch(ft.base64)).blob(); delete ft.base64; await DB.put('fotos', { ...ft, blob }); }
+    for (const ft of j.fotos || []) { const blob = await (await fetch(ft.base64)).blob(); const blobLimpo = ft.base64Limpo ? await (await fetch(ft.base64Limpo)).blob() : undefined; delete ft.base64; delete ft.base64Limpo; await DB.put('fotos', { ...ft, blob, blobLimpo }); }
+    for (const vd of j.videos || []) { const blob = await (await fetch(vd.base64)).blob(); const poster = vd.posterBase64 ? await (await fetch(vd.posterBase64)).blob() : undefined; delete vd.base64; delete vd.posterBase64; await DB.put('videos', { ...vd, blob, poster }); }
     toast(`${n} vistoria(s) importada(s)`); } catch (e) { toast('Falha ao importar: ' + e.message); }
   ev.target.value = '';
 };
@@ -493,7 +518,7 @@ $('#cfg-importar').onchange = async (ev) => {
 async function abrirVistoria(id) {
   V = await DB.get('vistorias', id); if (!V) return;
   normalizarVistoria(V);
-  fotosCache = await DB.fotosDe(id);
+  fotosCache = await DB.fotosDe(id); videosCache = await DB.videosDe(id);
   mostrar('tela-vistoria');
   renderVistoria();
   iniciarGPS();
@@ -527,18 +552,28 @@ function radio(label, path, valor) {
   const on = getPath(V, path) === valor;
   return `<label class="chk ${on ? 'on' : ''}"><input type="radio" name="r-${path}" data-path="${path}" data-tipo="radio" value="${esc(valor)}" ${on ? 'checked' : ''}>${esc(label)}</label>`;
 }
-function fotoGrupo(grupo, cat, rotulo, estufaId) {
+function midiaDoGrupo(grupo, cat, estufaId) {
   const fs = fotosCache.filter(f => f.grupo === grupo && f.categoria === cat && (grupo !== 'estufa' || f.estufaId === estufaId));
+  const vs = videosCache.filter(f => f.grupo === grupo && f.categoria === cat && (grupo !== 'estufa' || f.estufaId === estufaId));
+  return { fs, vs, texto: (!fs.length && !vs.length) ? 'sem fotos' : [fs.length ? fs.length + ' foto(s)' : '', vs.length ? vs.length + ' vídeo(s)' : ''].filter(Boolean).join(' · ') };
+}
+function fotoGrupo(grupo, cat, rotulo, estufaId) {
+  const m = midiaDoGrupo(grupo, cat, estufaId);
   return `<div class="fotogrupo" data-grupo="${grupo}" data-cat="${cat}" data-rotulo="${esc(rotulo)}" ${estufaId ? `data-estufa="${estufaId}"` : ''}>
-    <div class="fg-head"><span>${esc(rotulo)}</span><span class="cnt">${fs.length ? fs.length + ' foto(s)' : 'sem fotos'}</span></div>
-    <div class="thumbs">${fs.map(thumbHtml).join('')}</div>
-    <div class="fg-btns"><button class="btn btn-cam" type="button">📷 Câmera</button><button class="btn btn-gal" type="button">🖼 Galeria</button></div>
+    <div class="fg-head"><span>${esc(rotulo)}</span><span class="cnt">${m.texto}</span></div>
+    <div class="thumbs">${m.fs.map(thumbHtml).join('')}${m.vs.map(thumbVideoHtml).join('')}</div>
+    <div class="fg-btns"><button class="btn btn-cam" type="button">📷 Foto</button><button class="btn btn-vid" type="button">🎥 Vídeo</button><button class="btn btn-gal" type="button">🖼 Galeria</button></div>
   </div>`;
 }
 function thumbHtml(f) {
   if (!urlsThumb.has(f.id)) urlsThumb.set(f.id, URL.createObjectURL(f.blob));
   return `<span class="${f.enviada ? 'env' : ''}"><img src="${urlsThumb.get(f.id)}" data-foto="${f.id}" alt="" loading="lazy"></span>`;
 }
+function thumbVideoHtml(f) {
+  if (!urlsThumb.has(f.id)) urlsThumb.set(f.id, f.poster ? URL.createObjectURL(f.poster) : 'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="78" height="78"><rect width="78" height="78" fill="#333"/><text x="39" y="48" font-size="30" text-anchor="middle" fill="#fff">▶</text></svg>'));
+  return `<span class="vid ${f.enviado ? 'env' : ''}"><img src="${urlsThumb.get(f.id)}" data-video="${f.id}" alt="" loading="lazy"><i>▶ ${fmtDuracao(f.duracao)}</i></span>`;
+}
+const fmtDuracao = (s) => { s = Math.round(s || 0); return `${Math.floor(s / 60)}:${pad(s % 60)}`; };
 function tituloEstufa(i) { return `Estufa ${i + 1}`; }
 function rotuloEvento(ev, j) { return `Evento ${j + 1}` + (ev.dataInicio ? ` — ${fmtData(ev.dataInicio)}${ev.horaInicio ? ' ' + ev.horaInicio : ''}` : ''); }
 function estufaHtml(e, i) {
@@ -691,7 +726,7 @@ function docRow([k, rotulo]) {
   return `<div class="docrow"><label class="chk ${on ? 'on' : ''}"><input type="checkbox" data-path="documentos.coletados" data-tipo="multi" value="${k}" ${on ? 'checked' : ''}>${esc(rotulo)}</label>
     <div class="fotos-doc fotogrupo" data-grupo="doc" data-cat="${k}" data-rotulo="${esc(rotulo)}" style="margin:0;background:transparent;border:0;padding:0">
       <div class="thumbs" style="margin:4px 0">${fs.map(thumbHtml).join('')}</div>
-      <div class="fg-btns"><button class="btn peq btn-cam" type="button">📷 Fotografar</button><button class="btn peq btn-gal" type="button">🖼 Galeria</button></div>
+      <div class="fg-btns"><button class="btn peq btn-cam" type="button">📷 Fotografar</button><button class="btn peq btn-vid" type="button">🎥 Vídeo</button><button class="btn peq btn-gal" type="button">🖼 Galeria</button></div>
     </div></div>`;
 }
 function renderVistoria() {
@@ -752,9 +787,9 @@ function renderVistoria() {
   <div id="sec-incendio">${incendioSecaoHtml()}</div>
 
   <details class="secao"><summary><span class="num">5</span>Registro fotográfico e audiovisual<span class="seta">›</span></summary><div class="corpo">
-    <div class="dica">Fotos gerais da propriedade (feitas também pelo produtor — use <b>Galeria</b> para importar imagens recebidas). Cada foto recebe carimbo de data, hora e GPS.</div>
+    <div class="dica">Fotos e vídeos gerais da propriedade (feitos também pelo produtor — use <b>Galeria</b> para importar imagens e vídeos recebidos). Cada foto é salva em <b>duas versões</b>: com carimbo de data, hora e GPS e sem carimbo. Vídeos são gravados em <b>720p</b> (até 3 min cada); vídeos importados maiores que 720p são convertidos no celular antes do envio.</div>
     ${CAT_GERAL.map(([k, r]) => fotoGrupo('geral', k, r)).join('')}
-    <div class="linha2">${campo('Data das imagens', 'fotosGerais.dataImagens', { hint: 'se diversa da data da visita' })}<div class="campo"><label>Nº de imagens</label><div class="calc"><b>${fotosCache.length}</b> foto(s) nesta vistoria</div></div></div>
+    <div class="linha2">${campo('Data das imagens', 'fotosGerais.dataImagens', { hint: 'se diversa da data da visita' })}<div class="campo"><label>Nº de imagens</label><div class="calc"><b>${fotosCache.length}</b> foto(s)${videosCache.length ? ` e <b>${videosCache.length}</b> vídeo(s) (${fmtMB(videosCache.reduce((a, v) => a + (v.tamanho || 0), 0))})` : ''} nesta vistoria</div></div></div>
   </div></details>
 
   <details class="secao"><summary><span class="num">6</span>Documentos coletados (titular e cônjuge)<span class="seta">›</span></summary><div class="corpo">
@@ -815,9 +850,10 @@ async function excluirVistoria(id) {
     catch (e) { if (!confirm('Falha ao apagar no servidor: ' + e.message + '\n\nApagar mesmo assim só deste aparelho?')) return; }
   }
   for (const f of await DB.fotosDe(id)) await DB.del('fotos', f.id);
+  for (const f of await DB.videosDe(id)) await DB.del('videos', f.id);
   await DB.del('vistorias', id);
   clearTimeout(salvarTimer);
-  if (V && V.id === id) { V = null; fotosCache = []; }   // impede que o salvamento automático recrie a vistoria
+  if (V && V.id === id) { V = null; fotosCache = []; videosCache = []; }   // impede que o salvamento automático recrie a vistoria
   toast(noServidor ? 'Vistoria excluída aqui e no servidor' : 'Vistoria excluída deste aparelho');
   if ($('#tela-lista').classList.contains('ativa')) renderLista(); else irLista();
 }
@@ -830,7 +866,7 @@ async function concluirVistoria() {
   const avisos = [];
   if (!V.assinatura) avisos.push('sem assinatura do produtor');
   if ((V.produtor.conjuge || /Casad|União/.test(V.produtor.estadoCivil || '')) && !V.assinaturaConjuge) avisos.push('sem assinatura do cônjuge');
-  if (!fotosCache.length) avisos.push('nenhuma foto registrada');
+  if (!fotosCache.length && !videosCache.length) avisos.push('nenhuma foto registrada');
   if (V.eventos.some(e => (duracaoEvento(e) ?? 0) < 0)) avisos.push('há evento com retorno antes do início');
   V.estufas.forEach((e, i) => { normalizarEstufa(e); if (!e.geradorTem) avisos.push(`estufa ${i + 1} sem a informação de gerador`); if (!e.incendio) avisos.push(`estufa ${i + 1} sem informar se pegou fogo`); if (e.tipoEstufa === 'continua') { if (!e.boxes.length) avisos.push(`estufa ${i + 1} (carga contínua) sem boxes`); else if (e.boxes.some(b => !b.prejuizo)) avisos.push(`estufa ${i + 1}: há box sem informar se houve prejuízo`); }
     if (e.incendio === 'Sim') { const f = e.fogo, fotoDe = (k) => fotosCache.some(x => x.estufaId === e.id && x.categoria === k);
@@ -873,11 +909,11 @@ function ligarEventosForm() {
   };
   form.onchange = form.oninput;
   form.onclick = async (ev) => {
-    const b = ev.target.closest('button, img[data-foto]'); if (!b) return;
+    const b = ev.target.closest('button, img[data-foto], img[data-video]'); if (!b) return;
     if (b.id === 'add-estufa') { V.estufas.push(novaEstufa()); marcarAlterada(); rerenderEstufas(); }
-    else if (b.classList.contains('rm-estufa')) { ev.preventDefault(); const e = V.estufas.find(x => x.id === b.dataset.id); const n = fotosCache.filter(f => f.estufaId === e.id).length; if (!confirm(`Remover esta estufa${n ? ` e suas ${n} foto(s)` : ''}?`)) return; for (const f of fotosCache.filter(f => f.estufaId === e.id)) { await DB.del('fotos', f.id); } fotosCache = fotosCache.filter(f => f.estufaId !== e.id); V.estufas = V.estufas.filter(x => x.id !== b.dataset.id); marcarAlterada(); rerenderEstufas(); }
+    else if (b.classList.contains('rm-estufa')) { ev.preventDefault(); const e = V.estufas.find(x => x.id === b.dataset.id); const n = fotosCache.filter(f => f.estufaId === e.id).length; if (!confirm(`Remover esta estufa${n ? ` e suas ${n} foto(s)` : ''}?`)) return; for (const f of fotosCache.filter(f => f.estufaId === e.id)) { await DB.del('fotos', f.id); } fotosCache = fotosCache.filter(f => f.estufaId !== e.id); for (const f of videosCache.filter(f => f.estufaId === e.id)) { await DB.del('videos', f.id); } videosCache = videosCache.filter(f => f.estufaId !== e.id); V.estufas = V.estufas.filter(x => x.id !== b.dataset.id); marcarAlterada(); rerenderEstufas(); }
     else if (b.dataset.addBox != null) { const i = +b.dataset.addBox, e = V.estufas[i]; const n = e.boxes.length ? Math.max(...e.boxes.map(x => numVal(x.numero) || 0)) + 1 : 1; e.boxes.push(novoBox(n)); marcarAlterada(); rerenderEstufa(i); }
-    else if (b.classList.contains('rm-box')) { ev.preventDefault(); const i = +b.dataset.estufa, e = V.estufas[i]; const bx = e.boxes.find(x => x.id === b.dataset.id); const cat = 'box' + bx.numero; const n = fotosCache.filter(f => f.estufaId === e.id && f.categoria === cat).length; if (!confirm(`Remover o box ${bx.numero}${n ? ` e suas ${n} foto(s)` : ''}?`)) return; for (const f of fotosCache.filter(f => f.estufaId === e.id && f.categoria === cat)) { await DB.del('fotos', f.id); } fotosCache = fotosCache.filter(f => !(f.estufaId === e.id && f.categoria === cat)); e.boxes = e.boxes.filter(x => x.id !== b.dataset.id); marcarAlterada(); rerenderEstufa(i); }
+    else if (b.classList.contains('rm-box')) { ev.preventDefault(); const i = +b.dataset.estufa, e = V.estufas[i]; const bx = e.boxes.find(x => x.id === b.dataset.id); const cat = 'box' + bx.numero; const n = fotosCache.filter(f => f.estufaId === e.id && f.categoria === cat).length; if (!confirm(`Remover o box ${bx.numero}${n ? ` e suas ${n} foto(s)` : ''}?`)) return; for (const f of fotosCache.filter(f => f.estufaId === e.id && f.categoria === cat)) { await DB.del('fotos', f.id); } fotosCache = fotosCache.filter(f => !(f.estufaId === e.id && f.categoria === cat)); for (const f of videosCache.filter(f => f.estufaId === e.id && f.categoria === cat)) { await DB.del('videos', f.id); } videosCache = videosCache.filter(f => !(f.estufaId === e.id && f.categoria === cat)); e.boxes = e.boxes.filter(x => x.id !== b.dataset.id); marcarAlterada(); rerenderEstufa(i); }
     else if (b.dataset.perdaTotal != null) {
       const i = +b.dataset.perdaTotal, e = V.estufas[i];
       if (!confirm(`Marcar todo o fumo em cura da ${tituloEstufa(i)} como 100 % perdido (sem desclassificação)?`)) return;
@@ -891,12 +927,13 @@ function ligarEventosForm() {
     else if (b.id === 'ass-limpar') { limparAssinatura('assinatura'); }
     else if (b.id === 'ass-conjuge-limpar') { limparAssinatura('assinaturaConjuge'); }
     else if (b.id === 'gps-atualizar') { capturarGPS(true); }
-    else if (b.classList.contains('btn-cam') || b.classList.contains('btn-gal')) {
+    else if (b.classList.contains('btn-cam') || b.classList.contains('btn-gal') || b.classList.contains('btn-vid')) {
       const g = b.closest('.fotogrupo');
       alvoFoto = { grupo: g.dataset.grupo, categoria: g.dataset.cat, rotulo: g.dataset.rotulo, estufaId: g.dataset.estufa || null, el: g };
-      (b.classList.contains('btn-cam') ? $('#in-cam') : $('#in-gal')).click();
+      if (b.classList.contains('btn-vid')) abrirGravador(); else (b.classList.contains('btn-cam') ? $('#in-cam') : $('#in-gal')).click();
     }
     else if (b.dataset.foto) abrirModalFoto(b.dataset.foto);
+    else if (b.dataset.video) abrirModalVideo(b.dataset.video);
   };
 }
 function rerenderEstufas() { $('#estufas').innerHTML = V.estufas.map(estufaHtml).join(''); V.estufas.forEach((e, i) => recalcularEstufa(i)); const s = $('#sec-incendio'); if (s) s.innerHTML = incendioSecaoHtml(); atualizarPillLista(); }
@@ -975,46 +1012,195 @@ $('#in-cam').onchange = (ev) => receberArquivos(ev.target.files, 'camera').then(
 $('#in-gal').onchange = (ev) => receberArquivos(ev.target.files, 'galeria').then(() => ev.target.value = '');
 async function receberArquivos(files, origem) {
   if (!alvoFoto || !files.length) return;
-  const alvo = alvoFoto; let n = 0;
-  toast(`Processando ${files.length} imagem(ns)…`, 10000);
-  for (const file of files) {
+  const alvo = alvoFoto; let n = 0, nv = 0;
+  const lista = Array.from(files);
+  const imagens = lista.filter(f => !ehVideo(f)), videos = lista.filter(ehVideo);
+  if (imagens.length) toast(`Processando ${imagens.length} imagem(ns)…`, 10000);
+  for (const file of imagens) {
     try {
       const dataOriginal = origem === 'galeria' ? (await lerDataExif(file)) || new Date(file.lastModified) : new Date();
       const gps = posAtual || V.gps || null;
-      const prefixo = alvo.grupo === 'estufa' ? `Estufa ${V.estufas.findIndex(e => e.id === alvo.estufaId) + 1}` : (alvo.grupo === 'doc' ? 'Documento' : 'Geral');
-      const linhas = [
-        `${fmtDataHora(dataOriginal)}${origem === 'galeria' ? ' (data do arquivo original)' : ''}  ${gps ? `GPS ${gps.lat.toFixed(5)}, ${gps.lng.toFixed(5)}` : 'GPS indisponível'}`,
-        `${V.produtor.nome || 'Produtor'} — ${prefixo}: ${alvo.rotulo}`
-      ];
-      const blob = await processarImagem(file, linhas);
+      const linhas = linhasCarimbo(alvo, dataOriginal, origem, gps);
+      const img = await carregarImagem(file);
+      const blob = await processarImagem(img, linhas);
+      const blobLimpo = await processarImagem(img, null);   // v1.7: cópia sem carimbo
       const seq = fotosCache.filter(f => f.grupo === alvo.grupo && f.categoria === alvo.categoria && f.estufaId === alvo.estufaId).length + 1;
-      const foto = { id: uuid(), vistoriaId: V.id, grupo: alvo.grupo, categoria: alvo.categoria, rotulo: alvo.rotulo, estufaId: alvo.estufaId, seq, origem, blob,
+      const foto = { id: uuid(), vistoriaId: V.id, grupo: alvo.grupo, categoria: alvo.categoria, rotulo: alvo.rotulo, estufaId: alvo.estufaId, seq, origem, blob, blobLimpo,
         criadoEm: new Date().toISOString(), dataOriginal: dataOriginal.toISOString(), lat: gps ? gps.lat : null, lng: gps ? gps.lng : null, enviada: false, nomeBase: `${alvo.categoria}_${pad(seq)}_${carimboArquivo(dataOriginal)}` };
       await DB.put('fotos', foto); fotosCache.push(foto); n++;
-      if (alvo.grupo === 'doc') { const arr = V.documentos.coletados || []; if (!arr.includes(alvo.categoria)) { arr.push(alvo.categoria); V.documentos.coletados = arr; const chk = alvo.el.closest('.docrow')?.querySelector('input[type=checkbox]'); if (chk) { chk.checked = true; chk.closest('.chk').classList.add('on'); } } }
+      marcarDocColetado(alvo);
     } catch (e) { console.error(e); toast('Falha ao processar imagem: ' + e.message, 4000); }
   }
-  if (V.status === 'enviada') { /* fotos novas serão enviadas ao reenviar */ }
+  for (const file of videos) {
+    try { await receberVideo(file, origem, alvo); nv++; } catch (e) { console.error(e); toast('Falha ao importar vídeo: ' + e.message, 5000); }
+  }
   marcarAlterada();
   atualizarGrupo(alvo.el);
-  toast(`${n} foto(s) adicionada(s)`);
+  toast([n ? `${n} foto(s) adicionada(s)` : '', nv ? `${nv} vídeo(s) adicionado(s)` : ''].filter(Boolean).join(' · ') || 'Nenhum arquivo adicionado');
+}
+const ehVideo = (file) => /^video\//.test(file.type) || /\.(mp4|webm|mov|3gp|mkv|m4v)$/i.test(file.name || '');
+const fmtMB = (b) => (b / 1048576).toFixed(b < 10485760 ? 1 : 0) + ' MB';
+function linhasCarimbo(alvo, dataOriginal, origem, gps) {
+  const prefixo = alvo.grupo === 'estufa' ? `Estufa ${V.estufas.findIndex(e => e.id === alvo.estufaId) + 1}` : (alvo.grupo === 'doc' ? 'Documento' : 'Geral');
+  return [
+    `${fmtDataHora(dataOriginal)}${origem === 'galeria' ? ' (data do arquivo original)' : ''}  ${gps ? `GPS ${gps.lat.toFixed(5)}, ${gps.lng.toFixed(5)}` : 'GPS indisponível'}`,
+    `${V.produtor.nome || 'Produtor'} — ${prefixo}: ${alvo.rotulo}`
+  ];
+}
+function marcarDocColetado(alvo) {
+  if (alvo.grupo !== 'doc') return;
+  const arr = V.documentos.coletados || []; if (arr.includes(alvo.categoria)) return;
+  arr.push(alvo.categoria); V.documentos.coletados = arr;
+  const chk = alvo.el.closest('.docrow')?.querySelector('input[type=checkbox]'); if (chk) { chk.checked = true; chk.closest('.chk').classList.add('on'); }
+}
+
+/* ====================== VÍDEOS (v1.7) ====================== */
+const VIDEO_MAX_SEG = 180;              // duração máxima de uma gravação no app
+const VIDEO_BITRATE = 2000000;          // ~2 Mbps em 720p (≈ 15 MB por minuto)
+const VIDEO_MAX_MB_IMPORT = 300;        // vídeo da galeria acima disso é recusado
+let recStream = null, recMedia = null, recPartes = [], recTimer = null, recInicio = 0, recFacing = 'environment';
+function mimeGravacao() {
+  const cands = ['video/mp4;codecs=avc1.42E01E,mp4a.40.2', 'video/mp4;codecs=avc1.42E01E,mp4a.40.5', 'video/webm;codecs=vp9,opus', 'video/webm;codecs=vp8,opus', 'video/mp4', 'video/webm'];
+  return cands.find(m => window.MediaRecorder && MediaRecorder.isTypeSupported(m)) || '';
+}
+async function abrirGravador() {
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia || !window.MediaRecorder) { toast('Este navegador não grava vídeo dentro do app — use a Galeria (grave na câmera do celular em 720p)', 5000); return; }
+  $('#modal-rec').classList.add('ativa'); $('#rec-msg').textContent = ''; $('#rec-timer').textContent = 'pronto para gravar em 720p'; $('#rec-timer').classList.remove('on');
+  $('#rec-iniciar').style.display = ''; $('#rec-parar').style.display = 'none';
+  await ligarCamera();
+}
+async function ligarCamera() {
+  desligarCamera();
+  try {
+    recStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: { facingMode: { ideal: recFacing }, width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30, max: 30 } } });
+    const pv = $('#rec-preview'); pv.srcObject = recStream; await pv.play().catch(() => { });
+    const st = recStream.getVideoTracks()[0].getSettings(); $('#rec-msg').textContent = `${st.width || '?'}×${st.height || '?'} · ${mimeGravacao().split(';')[0].replace('video/', '')}`;
+  } catch (e) { $('#rec-msg').textContent = 'Sem acesso à câmera: ' + e.message + ' — use a Galeria.'; }
+}
+function desligarCamera() { if (recStream) { recStream.getTracks().forEach(t => t.stop()); recStream = null; } const pv = $('#rec-preview'); if (pv) pv.srcObject = null; }
+$('#rec-virar').onclick = () => { if (recMedia) return; recFacing = recFacing === 'environment' ? 'user' : 'environment'; ligarCamera(); };
+$('#rec-cancelar').onclick = () => { if (recMedia && recMedia.state !== 'inactive') { recMedia.cancelado = true; recMedia.stop(); } fecharGravador(); };
+function fecharGravador() { clearInterval(recTimer); recTimer = null; desligarCamera(); recMedia = null; $('#modal-rec').classList.remove('ativa'); }
+$('#rec-iniciar').onclick = () => {
+  if (!recStream) { toast('Câmera indisponível'); return; }
+  const mime = mimeGravacao(); recPartes = [];
+  try { recMedia = new MediaRecorder(recStream, { mimeType: mime || undefined, videoBitsPerSecond: VIDEO_BITRATE, audioBitsPerSecond: 64000 }); }
+  catch (e) { toast('Não foi possível iniciar a gravação: ' + e.message, 5000); return; }
+  recMedia.ondataavailable = (ev) => { if (ev.data && ev.data.size) recPartes.push(ev.data); };
+  recMedia.onstop = async () => {
+    const m = recMedia; clearInterval(recTimer); recTimer = null;
+    const dur = (Date.now() - recInicio) / 1000;
+    const blob = new Blob(recPartes, { type: m.mimeType || mime || 'video/webm' }); recPartes = [];
+    if (m.cancelado || !blob.size) { fecharGravador(); return; }
+    const alvo = alvoFoto; fecharGravador();
+    try { await salvarVideo(blob, { origem: 'camera', dataOriginal: new Date(recInicio), duracao: dur, largura: 1280, altura: 720 }, alvo); marcarAlterada(); atualizarGrupo(alvo.el); toast(`Vídeo de ${fmtDuracao(dur)} salvo (${fmtMB(blob.size)})`, 4000); }
+    catch (e) { console.error(e); toast('Falha ao salvar o vídeo: ' + e.message, 5000); }
+  };
+  recInicio = Date.now(); recMedia.start(1000);
+  $('#rec-iniciar').style.display = 'none'; $('#rec-parar').style.display = ''; $('#rec-virar').style.display = 'none';
+  const tm = $('#rec-timer'); tm.classList.add('on');
+  recTimer = setInterval(() => { const s = (Date.now() - recInicio) / 1000; tm.innerHTML = `<span class="rec-dot"></span>${fmtDuracao(s)} / ${fmtDuracao(VIDEO_MAX_SEG)}`; if (s >= VIDEO_MAX_SEG && recMedia && recMedia.state === 'recording') { recMedia.stop(); toast('Limite de 3 minutos atingido — vídeo salvo', 4000); } }, 500);
+};
+$('#rec-parar').onclick = () => { if (recMedia && recMedia.state === 'recording') recMedia.stop(); $('#rec-virar').style.display = ''; };
+// Importação da galeria: lê metadados; se maior que 720p e o navegador souber reconverter, grava de novo em 720p
+async function receberVideo(file, origem, alvo) {
+  if (file.size > VIDEO_MAX_MB_IMPORT * 1048576) throw new Error(`vídeo muito grande (${fmtMB(file.size)}); o limite é ${VIDEO_MAX_MB_IMPORT} MB`);
+  const info = await infoVideo(file);
+  let blob = file, largura = info.largura, altura = info.altura, mime = file.type || 'video/mp4', reconvertido = false;
+  const maior = Math.min(info.largura, info.altura) > 720 || Math.max(info.largura, info.altura) > 1280;
+  const podeReconverter = !!(window.MediaRecorder && (HTMLVideoElement.prototype.captureStream || HTMLVideoElement.prototype.mozCaptureStream) && info.duracao && isFinite(info.duracao));
+  if (maior && podeReconverter) {
+    if (confirm(`O vídeo tem ${info.largura}×${info.altura} (${fmtMB(file.size)}). Converter para 720p antes de salvar? Leva o tempo do vídeo (${fmtDuracao(info.duracao)}).\n\nOK = converter (recomendado) · Cancelar = guardar o original`)) {
+      try { const r = await reconverter720(file, info); blob = r.blob; largura = r.largura; altura = r.altura; mime = r.blob.type; reconvertido = true; }
+      catch (e) { console.error(e); toast('Conversão falhou (' + e.message + '); guardando o original', 5000); }
+    }
+  } else if (maior) toast('Vídeo acima de 720p; este navegador não converte — será enviado como está', 5000);
+  const dataOriginal = origem === 'galeria' ? new Date(file.lastModified) : new Date();
+  await salvarVideo(blob, { origem, dataOriginal, duracao: info.duracao || 0, largura, altura, mime, reconvertido, nomeOriginal: file.name }, alvo);
+}
+function infoVideo(blob) {
+  return new Promise((res, rej) => {
+    const v = document.createElement('video'); v.preload = 'metadata'; v.muted = true; v.playsInline = true;
+    const url = URL.createObjectURL(blob);
+    v.onloadedmetadata = () => { const r = { duracao: v.duration, largura: v.videoWidth, altura: v.videoHeight }; URL.revokeObjectURL(url); res(r); };
+    v.onerror = () => { URL.revokeObjectURL(url); rej(new Error('vídeo inválido ou formato não suportado')); };
+    v.src = url;
+  });
+}
+async function reconverter720(file, info) {
+  const url = URL.createObjectURL(file);
+  const v = document.createElement('video'); v.src = url; v.playsInline = true; v.volume = 0; v.crossOrigin = 'anonymous';
+  await new Promise((res, rej) => { v.onloadedmetadata = res; v.onerror = () => rej(new Error('não foi possível abrir o vídeo')); });
+  const esc_ = Math.min(1, 720 / Math.min(v.videoWidth, v.videoHeight), 1280 / Math.max(v.videoWidth, v.videoHeight));
+  const w = Math.round(v.videoWidth * esc_ / 2) * 2, h = Math.round(v.videoHeight * esc_ / 2) * 2;
+  const cv = document.createElement('canvas'); cv.width = w; cv.height = h; const cx = cv.getContext('2d');
+  const stream = cv.captureStream(30);
+  try { const src = (v.captureStream || v.mozCaptureStream).call(v); src.getAudioTracks().forEach(t => stream.addTrack(t)); } catch (e) { console.warn('sem áudio na conversão', e); }
+  const mime = mimeGravacao();
+  const rec = new MediaRecorder(stream, { mimeType: mime || undefined, videoBitsPerSecond: VIDEO_BITRATE, audioBitsPerSecond: 64000 });
+  const partes = []; rec.ondataavailable = (ev) => { if (ev.data && ev.data.size) partes.push(ev.data); };
+  const fim = new Promise((res) => { rec.onstop = res; });
+  let vivo = true; const desenhar = () => { if (!vivo) return; cx.drawImage(v, 0, 0, w, h); requestAnimationFrame(desenhar); };
+  toast(`Convertendo para 720p… 0%`, 600000);
+  rec.start(1000); await v.play(); desenhar();
+  const prog = setInterval(() => toast(`Convertendo para 720p… ${Math.round(v.currentTime / info.duracao * 100)}%`, 600000), 1000);
+  await new Promise((res) => { v.onended = res; });
+  vivo = false; clearInterval(prog); rec.stop(); await fim; URL.revokeObjectURL(url);
+  stream.getTracks().forEach(t => t.stop());
+  const blob = new Blob(partes, { type: rec.mimeType || mime || 'video/webm' });
+  if (!blob.size) throw new Error('conversão vazia');
+  toast('Conversão concluída', 2000);
+  return { blob, largura: w, altura: h };
+}
+async function salvarVideo(blob, meta, alvo) {
+  const gps = posAtual || V.gps || null;
+  const seq = videosCache.filter(f => f.grupo === alvo.grupo && f.categoria === alvo.categoria && f.estufaId === alvo.estufaId).length + 1;
+  const mime = meta.mime || blob.type || 'video/webm';
+  let poster = null; try { poster = await posterVideo(blob); } catch (e) { console.warn('poster', e); }
+  const video = { id: uuid(), vistoriaId: V.id, grupo: alvo.grupo, categoria: alvo.categoria, rotulo: alvo.rotulo, estufaId: alvo.estufaId, seq, origem: meta.origem, blob, poster, mime,
+    duracao: meta.duracao || 0, tamanho: blob.size, largura: meta.largura || null, altura: meta.altura || null, reconvertido: !!meta.reconvertido, nomeOriginal: meta.nomeOriginal || '',
+    criadoEm: new Date().toISOString(), dataOriginal: meta.dataOriginal.toISOString(), lat: gps ? gps.lat : null, lng: gps ? gps.lng : null,
+    enviado: false, sessaoUrl: '', enviadoBytes: 0, nomeBase: `VIDEO_${alvo.categoria}_${pad(seq)}_${carimboArquivo(meta.dataOriginal)}` };
+  await DB.put('videos', video); videosCache.push(video);
+  marcarDocColetado(alvo);
+  return video;
+}
+function posterVideo(blob) {
+  return new Promise((res, rej) => {
+    const v = document.createElement('video'); v.muted = true; v.playsInline = true; v.preload = 'auto';
+    const url = URL.createObjectURL(blob); let feito = false;
+    const capturar = () => { if (feito) return; feito = true; try { const esc_ = Math.min(1, 640 / Math.max(v.videoWidth, v.videoHeight)); const cv = document.createElement('canvas'); cv.width = Math.round(v.videoWidth * esc_); cv.height = Math.round(v.videoHeight * esc_); cv.getContext('2d').drawImage(v, 0, 0, cv.width, cv.height); cv.toBlob(b => { URL.revokeObjectURL(url); b ? res(b) : rej(new Error('sem quadro')); }, 'image/jpeg', 0.8); } catch (e) { URL.revokeObjectURL(url); rej(e); } };
+    v.onloadeddata = () => { try { v.currentTime = Math.min(0.5, (v.duration || 1) / 2); } catch { capturar(); } };
+    v.onseeked = capturar; v.onerror = () => { URL.revokeObjectURL(url); rej(new Error('vídeo inválido')); };
+    setTimeout(() => { if (!feito) { if (v.readyState >= 2) capturar(); else { URL.revokeObjectURL(url); rej(new Error('tempo esgotado')); } } }, 8000);
+    v.src = url;
+  });
+}
+let videoModal = null;
+function abrirModalVideo(id) {
+  const f = videosCache.find(x => x.id === id); if (!f) return; videoModal = f; fotoModal = null;
+  const vd = $('#modal-video'); vd.style.display = ''; $('#modal-img').style.display = 'none';
+  if (vd.src) URL.revokeObjectURL(vd.src); vd.src = URL.createObjectURL(f.blob);
+  $('#modal-legenda').textContent = `${f.rotulo} · vídeo ${fmtDuracao(f.duracao)} · ${f.largura ? f.largura + '×' + f.altura + ' · ' : ''}${fmtMB(f.tamanho)} · ${fmtDataHora(new Date(f.dataOriginal))}${f.lat ? ` · ${f.lat.toFixed(5)}, ${f.lng.toFixed(5)}` : ''}${f.enviado ? ' · enviado ✓' : (f.enviadoBytes ? ` · ${Math.round(f.enviadoBytes / f.tamanho * 100)}% enviado` : '')}`;
+  $('#modal-excluir').textContent = 'Excluir vídeo';
+  $('#modal-foto').classList.add('ativa');
 }
 function atualizarGrupo(g) {
-  const fs = fotosCache.filter(f => f.grupo === g.dataset.grupo && f.categoria === g.dataset.cat && (g.dataset.grupo !== 'estufa' || f.estufaId === g.dataset.estufa));
-  g.querySelector('.thumbs').innerHTML = fs.map(thumbHtml).join('');
-  const c = g.querySelector('.cnt'); if (c) c.textContent = fs.length ? fs.length + ' foto(s)' : 'sem fotos';
+  const m = midiaDoGrupo(g.dataset.grupo, g.dataset.cat, g.dataset.estufa || null);
+  g.querySelector('.thumbs').innerHTML = m.fs.map(thumbHtml).join('') + m.vs.map(thumbVideoHtml).join('');
+  const c = g.querySelector('.cnt'); if (c) c.textContent = m.texto;
 }
 function carregarImagem(file) { return new Promise((res, rej) => { const url = URL.createObjectURL(file); const img = new Image(); img.onload = () => { URL.revokeObjectURL(url); res(img); }; img.onerror = () => { URL.revokeObjectURL(url); rej(new Error('imagem inválida')); }; img.src = url; }); }
-async function processarImagem(file, linhas) {
-  const img = await carregarImagem(file);
+async function processarImagem(img, linhas) {
   const MAX = 1600; let w = img.naturalWidth, h = img.naturalHeight; const esc_ = Math.min(1, MAX / Math.max(w, h)); w = Math.round(w * esc_); h = Math.round(h * esc_);
   const cv = document.createElement('canvas'); cv.width = w; cv.height = h; const cx = cv.getContext('2d');
   cx.drawImage(img, 0, 0, w, h);
-  // carimbo (faixa inferior)
-  const fs = Math.max(14, Math.round(Math.min(w, h) * 0.028)); const lh = Math.round(fs * 1.35); const alt = lh * linhas.length + fs * 0.8;
-  cx.fillStyle = 'rgba(0,0,0,0.55)'; cx.fillRect(0, h - alt, w, alt);
-  cx.font = `bold ${fs}px system-ui, Arial, sans-serif`; cx.fillStyle = '#fff'; cx.textBaseline = 'top';
-  linhas.forEach((t, i) => cx.fillText(t, fs * 0.6, h - alt + fs * 0.4 + i * lh, w - fs));
+  if (linhas && linhas.length) {   // carimbo (faixa inferior); sem linhas = cópia limpa
+    const fs = Math.max(14, Math.round(Math.min(w, h) * 0.028)); const lh = Math.round(fs * 1.35); const alt = lh * linhas.length + fs * 0.8;
+    cx.fillStyle = 'rgba(0,0,0,0.55)'; cx.fillRect(0, h - alt, w, alt);
+    cx.font = `bold ${fs}px system-ui, Arial, sans-serif`; cx.fillStyle = '#fff'; cx.textBaseline = 'top';
+    linhas.forEach((t, i) => cx.fillText(t, fs * 0.6, h - alt + fs * 0.4 + i * lh, w - fs));
+  }
   return new Promise((res, rej) => cv.toBlob(b => b ? res(b) : rej(new Error('falha ao gerar JPEG')), 'image/jpeg', 0.85));
 }
 // Lê EXIF DateTimeOriginal (fotos importadas da galeria)
@@ -1041,15 +1227,21 @@ async function lerDataExif(file) {
 function blobParaBase64(blob) { return new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = () => rej(r.error); r.readAsDataURL(blob); }); }
 let fotoModal = null;
 function abrirModalFoto(id) {
-  const f = fotosCache.find(x => x.id === id); if (!f) return; fotoModal = f;
+  const f = fotosCache.find(x => x.id === id); if (!f) return; fotoModal = f; videoModal = null;
+  const vd = $('#modal-video'); vd.pause(); vd.style.display = 'none'; $('#modal-img').style.display = ''; $('#modal-excluir').textContent = 'Excluir foto';
   $('#modal-img').src = urlsThumb.get(f.id); $('#modal-legenda').textContent = `${f.rotulo} · ${fmtDataHora(new Date(f.dataOriginal))}${f.lat ? ` · ${f.lat.toFixed(5)}, ${f.lng.toFixed(5)}` : ''}${f.enviada ? ' · enviada ✓' : ''}`;
   $('#modal-foto').classList.add('ativa');
 }
-$('#modal-fechar').onclick = () => $('#modal-foto').classList.remove('ativa');
+$('#modal-fechar').onclick = () => { $('#modal-video').pause(); $('#modal-foto').classList.remove('ativa'); };
 $('#modal-excluir').onclick = async () => {
-  if (!fotoModal || !confirm('Excluir esta foto do celular?' + (fotoModal.enviada ? ' (ela já está no Drive e lá permanecerá)' : ''))) return;
-  await DB.del('fotos', fotoModal.id); fotosCache = fotosCache.filter(f => f.id !== fotoModal.id);
-  $('#modal-foto').classList.remove('ativa'); marcarAlterada();
+  if (videoModal) {
+    if (!confirm('Excluir este vídeo do celular?' + (videoModal.enviado ? ' (ele já está no Drive e lá permanecerá)' : ''))) return;
+    await DB.del('videos', videoModal.id); videosCache = videosCache.filter(f => f.id !== videoModal.id); videoModal = null;
+  } else {
+    if (!fotoModal || !confirm('Excluir esta foto do celular?' + (fotoModal.enviada ? ' (ela já está no Drive e lá permanecerá)' : ''))) return;
+    await DB.del('fotos', fotoModal.id); fotosCache = fotosCache.filter(f => f.id !== fotoModal.id);
+  }
+  $('#modal-video').pause(); $('#modal-foto').classList.remove('ativa'); marcarAlterada();
   $$('.fotogrupo').forEach(atualizarGrupo);
 };
 
@@ -1086,9 +1278,38 @@ async function api(acao, dados) {
   if (!j.ok) throw new Error(j.erro || 'erro desconhecido no script');
   return j;
 }
-function vistoriaParaEnvio(v, fotos) {
+function vistoriaParaEnvio(v, fotos, videos) {
   const { assinatura, assinaturaConjuge, ...resto } = v;
-  return { ...resto, tipoVistoria: (v.estufas || []).some(e => e.incendio === 'Sim') ? 'Incêndio na estufa' : 'Queda de energia', temAssinatura: !!assinatura, temAssinaturaConjuge: !!assinaturaConjuge, fotos: fotos.map(f => ({ id: f.id, grupo: f.grupo, categoria: f.categoria, rotulo: f.rotulo, estufaIndex: f.estufaId ? v.estufas.findIndex(e => e.id === f.estufaId) + 1 : null, seq: f.seq, dataOriginal: f.dataOriginal, lat: f.lat, lng: f.lng, origem: f.origem, nomeBase: f.nomeBase })) };
+  const idx = (f) => f.estufaId ? v.estufas.findIndex(e => e.id === f.estufaId) + 1 : null;
+  return { ...resto, tipoVistoria: (v.estufas || []).some(e => e.incendio === 'Sim') ? 'Incêndio na estufa' : 'Queda de energia', temAssinatura: !!assinatura, temAssinaturaConjuge: !!assinaturaConjuge,
+    fotos: fotos.map(f => ({ id: f.id, grupo: f.grupo, categoria: f.categoria, rotulo: f.rotulo, estufaIndex: idx(f), seq: f.seq, dataOriginal: f.dataOriginal, lat: f.lat, lng: f.lng, origem: f.origem, nomeBase: f.nomeBase, temLimpa: !!f.blobLimpo })),
+    videos: (videos || []).map(f => ({ id: f.id, grupo: f.grupo, categoria: f.categoria, rotulo: f.rotulo, estufaIndex: idx(f), seq: f.seq, dataOriginal: f.dataOriginal, lat: f.lat, lng: f.lng, origem: f.origem, nomeBase: f.nomeBase, mime: f.mime, duracao: f.duracao, tamanho: f.tamanho, largura: f.largura, altura: f.altura, reconvertido: !!f.reconvertido, nomeOriginal: f.nomeOriginal || '' })) };
+}
+const VIDEO_PEDACO = 4 * 1048576;   // 4 MiB por requisição (múltiplo de 256 KiB, exigido pelo Drive)
+async function enviarVideo(v, f, meta, setMsg, rotulo) {
+  const total = f.blob.size; f.enviadoBytes = f.enviadoBytes || 0;
+  if (!f.sessaoUrl) {
+    const r0 = await api('videoIniciar', { vistoriaId: v.id, video: meta, quadroBase64: f.poster ? (await blobParaBase64(f.poster)).split(',')[1] : null });
+    if (r0.concluido) { f.enviado = true; f.enviadoBytes = total; f.url = r0.url || ''; await DB.put('videos', f); return; }
+    f.sessaoUrl = r0.sessao; f.enviadoBytes = 0; await DB.put('videos', f);
+  }
+  let tentativas = 0;
+  while (f.enviadoBytes < total) {
+    const ini = f.enviadoBytes, fim = Math.min(total, ini + VIDEO_PEDACO);
+    setMsg(`${rotulo}: ${Math.round(ini / total * 100)}%`);
+    let r;
+    try { r = await api('videoParte', { vistoriaId: v.id, video: meta, sessao: f.sessaoUrl, inicio: ini, fim, total, base64: (await blobParaBase64(f.blob.slice(ini, fim))).split(',')[1] }); }
+    catch (e) {
+      if (/expirad|inválida|invalid/i.test(e.message) && tentativas < 1) { tentativas++; f.sessaoUrl = ''; f.enviadoBytes = 0; await DB.put('videos', f); const r0 = await api('videoIniciar', { vistoriaId: v.id, video: meta, quadroBase64: null }); if (r0.concluido) { f.enviado = true; f.url = r0.url || ''; await DB.put('videos', f); return; } f.sessaoUrl = r0.sessao; await DB.put('videos', f); continue; }
+      throw e;
+    }
+    f.enviadoBytes = typeof r.recebido === 'number' ? r.recebido : fim;
+    if (r.concluido) { f.enviado = true; f.enviadoBytes = total; f.url = r.url || ''; }
+    await DB.put('videos', f);
+    setMsg(`${rotulo}: ${Math.round(f.enviadoBytes / total * 100)}%`, 1);
+    if (r.concluido) return;
+  }
+  f.enviado = true; await DB.put('videos', f);
 }
 async function sincronizar(manual) {
   if (sincronizando) return; if (!navigator.onLine) { if (manual) toast('Sem internet no momento'); return; }
@@ -1099,7 +1320,7 @@ async function sincronizar(manual) {
   sincronizando = true; let okN = 0;
   // total de passos para a porcentagem: dados + cada foto pendente + ficha, por vistoria
   const fotosPend = {}; let total = 0;
-  for (const v of pend) { const fs = (await DB.fotosDe(v.id)).filter(f => !f.enviada); fotosPend[v.id] = fs.length; total += 2 + fs.length; }
+  for (const v of pend) { const fs = (await DB.fotosDe(v.id)).filter(f => !f.enviada); const vs = (await DB.videosDe(v.id)).filter(f => !f.enviado); const pedacos = vs.reduce((a, f) => a + Math.ceil(Math.max(1, f.blob.size - (f.enviadoBytes || 0)) / VIDEO_PEDACO), 0); fotosPend[v.id] = fs.length + pedacos; total += 2 + fs.length + pedacos; }
   let feito = 0;
   const setMsg = (m, incremento) => {
     if (incremento) feito += incremento;
@@ -1112,8 +1333,8 @@ async function sincronizar(manual) {
       const v = (V && V.id === v0.id) ? V : v0;
       v.status = 'enviando'; v.erro = ''; await DB.put('vistorias', v); if (V === v) renderRodape(); setMsg(v.produtor.nome);
       try {
-        const fotos = await DB.fotosDe(v.id);
-        const dados = vistoriaParaEnvio(v, fotos);
+        const fotos = await DB.fotosDe(v.id); const videos = await DB.videosDe(v.id);
+        const dados = vistoriaParaEnvio(v, fotos, videos);
         setMsg(`${v.produtor.nome}: dados…`);
         const r1 = await api('upsert', { vistoria: dados });
         v.pastaDriveUrl = r1.pastaUrl || v.pastaDriveUrl;
@@ -1122,10 +1343,16 @@ async function sincronizar(manual) {
         for (let i = 0; i < pendFotos.length; i++) {
           const f = pendFotos[i]; setMsg(`${v.produtor.nome}: foto ${i + 1}/${pendFotos.length}`);
           const meta = dados.fotos.find(x => x.id === f.id);
-          await api('foto', { vistoriaId: v.id, foto: meta, base64: (await blobParaBase64(f.blob)).split(',')[1] });
+          await api('foto', { vistoriaId: v.id, foto: meta, base64: (await blobParaBase64(f.blob)).split(',')[1], base64Limpo: f.blobLimpo ? (await blobParaBase64(f.blobLimpo)).split(',')[1] : null });
           f.enviada = true; await DB.put('fotos', f);
           if (V === v) { const c = fotosCache.find(x => x.id === f.id); if (c) c.enviada = true; }
           setMsg(`${v.produtor.nome}: foto ${i + 1}/${pendFotos.length}`, 1);
+        }
+        const pendVideos = videos.filter(f => !f.enviado);
+        for (let i = 0; i < pendVideos.length; i++) {
+          const f = pendVideos[i]; const meta = dados.videos.find(x => x.id === f.id);
+          await enviarVideo(v, f, meta, setMsg, `${v.produtor.nome}: vídeo ${i + 1}/${pendVideos.length}`);
+          if (V === v) { const c = videosCache.find(x => x.id === f.id); if (c) { c.enviado = true; c.enviadoBytes = f.enviadoBytes; c.sessaoUrl = f.sessaoUrl; c.url = f.url; } }
         }
         setMsg(`${v.produtor.nome}: gerando ficha…`);
         const r3 = await api('finalizar', { vistoria: dados, assinaturaBase64: v.assinatura ? v.assinatura.split(',')[1] : null, assinaturaConjugeBase64: v.assinaturaConjuge ? v.assinaturaConjuge.split(',')[1] : null });
